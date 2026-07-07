@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>C_toolsJson</RootNamespace>
+    <AssemblyName>C_toolsJson</AssemblyName>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\C_toolsShared\C_toolsShared.csproj" />
+  </ItemGroup>
+</Project>

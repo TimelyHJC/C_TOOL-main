@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <Nullable Condition="'$(Nullable)' == ''">enable</Nullable>
+    <ImplicitUsings Condition="'$(ImplicitUsings)' == ''">enable</ImplicitUsings>
+    <LangVersion Condition="'$(LangVersion)' == ''">latest</LangVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' != 'C_TOOL_Setup'">
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+    <Acad2024InstallPath Condition="'$(Acad2024InstallPath)' == ''">C:\Program Files\Autodesk\AutoCAD 2024</Acad2024InstallPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' != 'C_TOOL_Setup' and '$(TargetFramework)' == '' and '$(TargetFrameworks)' == ''">
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+</Project>

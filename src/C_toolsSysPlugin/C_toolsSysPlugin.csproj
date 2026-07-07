@@ -1,0 +1,78 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>C_toolsSysPlugin</RootNamespace>
+    <Version>1.0.1</Version>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AssemblyName>V_YYY_NetFx</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(Acad2024InstallPath)\AcCoreMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(Acad2024InstallPath)\AcDbMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(Acad2024InstallPath)\AcMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <PackageReference Include="PolySharp" Version="1.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\C_toolsShared\C_toolsShared.csproj"
+                      SetTargetFramework="TargetFramework=$(TargetFramework)"
+                      SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\C_toolsJson\C_toolsJson.csproj"
+                      SetTargetFramework="TargetFramework=$(TargetFramework)"
+                      SkipGetTargetFrameworkProperties="true" />
+    <Using Include="C_toolsShared" />
+    <Using Include="C_toolsJson" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>$(MSBuildThisFileDirectory)..\..\C_TOOL_2024.bundle\Contents\Win64\</OutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' != ''">
+    <IntermediateOutputPath>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
+    <AppendTargetFrameworkToIntermediateOutputPath>false</AppendTargetFrameworkToIntermediateOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\C_toolsPlugin\SysConfigRow.cs" Link="Ui\SysConfigRow.cs" />
+    <Compile Include="..\C_toolsPlugin\SysConfigTabClassifier.cs" Link="Ui\SysConfigTabClassifier.cs" />
+    <Compile Include="..\C_toolsPlugin\DimStyleGroupInfo.cs" Link="Ui\DimStyleGroupInfo.cs" />
+    <Compile Include="..\C_toolsPlugin\DimStyleFieldRow.cs" Link="Ui\DimStyleFieldRow.cs" />
+    <Compile Include="..\C_toolsPlugin\DimStyleBatchService.cs" Link="Ui\DimStyleBatchService.cs" />
+    <Compile Include="..\C_toolsPlugin\UserConfigurationStore.cs" Link="Ui\UserConfigurationStore.cs" />
+    <Compile Include="..\C_toolsPlugin\DimStyleBatchPanel.xaml.cs" Link="Ui\DimStyleBatchPanel.xaml.cs" />
+    <Page Include="..\C_toolsPlugin\DimStyleBatchPanel.xaml" Link="Ui\DimStyleBatchPanel.xaml" />
+    <Compile Include="..\C_toolsPlugin\SysConfigUserStore.cs" Link="Ui\SysConfigUserStore.cs" />
+    <Compile Include="..\C_toolsPlugin\SysConfigBuiltInDefaults.cs" Link="Ui\SysConfigBuiltInDefaults.cs" />
+    <Compile Include="..\C_toolsPlugin\CadSysVarTextConverter.cs" Link="Ui\CadSysVarTextConverter.cs" />
+    <Compile Include="..\C_toolsPlugin\CadSysConfigArg.cs" Link="Ui\CadSysConfigArg.cs" />
+    <Compile Include="..\C_toolsPlugin\DimStyleLastGroupStore.cs" Link="Ui\DimStyleLastGroupStore.cs" />
+    <Compile Include="..\C_toolsPlugin\ArgProfileLastStore.cs" Link="Ui\ArgProfileLastStore.cs" />
+    <Compile Include="..\C_toolsPlugin\PrintSavePanel.xaml.cs" Link="Ui\PrintSavePanel.xaml.cs" />
+    <Page Include="..\C_toolsPlugin\PrintSavePanel.xaml" Link="Ui\PrintSavePanel.xaml" />
+    <Compile Include="..\C_toolsPlugin\CadDisplayPreferenceColors.cs" Link="Ui\CadDisplayPreferenceColors.cs" />
+    <Compile Include="..\C_toolsPlugin\PathsInfoCatalog.cs" Link="Ui\PathsInfoCatalog.cs" />
+    <Compile Include="..\C_toolsPlugin\PathsInfoPanel.xaml.cs" Link="Ui\PathsInfoPanel.xaml.cs" />
+    <Page Include="..\C_toolsPlugin\PathsInfoPanel.xaml" Link="Ui\PathsInfoPanel.xaml" />
+    <Compile Include="..\C_toolsPlugin\SysConfigPanelWindow.xaml.cs" Link="Ui\SysConfigPanelWindow.xaml.cs" />
+    <Page Include="..\C_toolsPlugin\SysConfigPanelWindow.xaml" Link="Ui\SysConfigPanelWindow.xaml" />
+  </ItemGroup>
+</Project>

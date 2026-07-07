@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48' and $([System.String]::Copy('$(OutputPath)').Contains('.bundle'))">
+    <CtoolBundleName>C_TOOL_2024</CtoolBundleName>
+    <CtoolBundleReleaseBand>2024</CtoolBundleReleaseBand>
+    <CtoolBundleRoot>$(MSBuildThisFileDirectory)..\C_TOOL_2024.bundle</CtoolBundleRoot>
+  </PropertyGroup>
+
+  <Target Name="GenerateBundlePackageContents"
+          AfterTargets="Build"
+          Condition="'$(CtoolBundleRoot)' != ''">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)WriteBundlePackageContents.ps1&quot; -BundleRoot &quot;$(CtoolBundleRoot)&quot; -BundleName &quot;$(CtoolBundleName)&quot; -AppVersion &quot;$(Version)&quot; -ReleaseBand &quot;$(CtoolBundleReleaseBand)&quot;" />
+  </Target>
+</Project>

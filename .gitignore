@@ -1,0 +1,40 @@
+# Local tooling
+**/.vs/
+**/.obsidian/
+/.dotnet-home/
+/.downloads/
+
+# Build outputs
+**/bin/
+**/obj/
+/C_TOOL_2024.bundle/
+/C_TOOL_2024.bundle.zip
+/C_TOOL_Setup.exe
+/C_TOOL_Setup.dll
+/C_TOOL_Setup.deps.json
+/C_TOOL_Setup.runtimeconfig.json
+/C_TOOL_Setup.pdb
+/latest.json
+
+# Test and diagnostics
+TestResults/
+*.trx
+
+# User-specific files
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+*.bak
+*.orig
+*.log
+
+# Python cache from helper scripts
+**/__pycache__/
+*.pyc

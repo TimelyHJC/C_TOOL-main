@@ -1,0 +1,7 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="/C_toolsShared;component/Themes/CadColors.xaml" />
+    <ResourceDictionary Source="/C_toolsShared;component/Themes/CadControls.xaml" />
+  </ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>

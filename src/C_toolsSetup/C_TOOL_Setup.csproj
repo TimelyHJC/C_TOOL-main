@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>C_toolsSetup</RootNamespace>
+    <AssemblyName>C_TOOL_Setup</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.3</Version>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_RepositoryReadme>$(MSBuildThisFileDirectory)PublishExtras\Bundles\说明.txt</_RepositoryReadme>
+    <_RepositoryInitialUserDataRoot>$(MSBuildThisFileDirectory)..\..\model</_RepositoryInitialUserDataRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <_RepositoryInitialUserData Include="$(_RepositoryInitialUserDataRoot)\**\*" Condition="Exists('$(_RepositoryInitialUserDataRoot)')" />
+    <EmbeddedResource Include="$(_RepositoryInitialUserDataRoot)\**\*" Condition="Exists('$(_RepositoryInitialUserDataRoot)')">
+      <LogicalName>InitialUserData/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- publish 输出：Bundles\ 放置使用说明 -->
+  <Target Name="PublishRepositoryBundlesFolder" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)Bundles" />
+    <Copy SourceFiles="$(_RepositoryReadme)" DestinationFiles="$(PublishDir)Bundles\说明.txt" SkipUnchangedFiles="true" Condition="Exists('$(_RepositoryReadme)')" />
+  </Target>
+
+  <!-- publish 输出：model\ 放置首次安装时复制到 User 根目录的初始用户数据（如 .arg、初始化文件）。 -->
+  <Target Name="PublishInitialUserDataFolder" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)model" Condition="'@(_RepositoryInitialUserData)' != ''" />
+    <Copy SourceFiles="@(_RepositoryInitialUserData)"
+          DestinationFiles="@(_RepositoryInitialUserData->'$(PublishDir)model\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_RepositoryInitialUserData)' != ''" />
+  </Target>
+</Project>

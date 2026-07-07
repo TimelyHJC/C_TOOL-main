@@ -1,0 +1,516 @@
+<Window x:Class="C_toolsBbbPlugin.BbbBlockHiddenDeviceNameWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        Title="F_BXR 隐形设备名称"
+        Width="1920"
+        Height="1080"
+        MinWidth="960"
+        MinHeight="540"
+        ResizeMode="CanResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Background="#262C38"
+        Foreground="#E8EAED"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        FontSize="12"
+        Loaded="Window_Loaded">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/C_toolsShared;component/Themes/CadTheme.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+    <ControlTemplate x:Key="CadScrollBarVertical" TargetType="ScrollBar">
+      <Grid x:Name="Bg" Width="{TemplateBinding Width}" Background="{StaticResource Cad.ScrollTrack}" SnapsToDevicePixels="True">
+        <Track x:Name="PART_Track" IsDirectionReversed="True" Focusable="False">
+          <Track.DecreaseRepeatButton>
+            <RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" IsTabStop="False" Opacity="0" />
+          </Track.DecreaseRepeatButton>
+          <Track.IncreaseRepeatButton>
+            <RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" IsTabStop="False" Opacity="0" />
+          </Track.IncreaseRepeatButton>
+          <Track.Thumb>
+            <Thumb>
+              <Thumb.Template>
+                <ControlTemplate TargetType="Thumb">
+                  <Border x:Name="T"
+                          Background="{StaticResource Cad.ScrollThumb}"
+                          CornerRadius="0"
+                          Margin="1,2"
+                          SnapsToDevicePixels="True" />
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="T" Property="Background" Value="{StaticResource Cad.ScrollThumbHover}" />
+                    </Trigger>
+                    <Trigger Property="IsDragging" Value="True">
+                      <Setter TargetName="T" Property="Background" Value="{StaticResource Cad.Accent}" />
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Thumb.Template>
+            </Thumb>
+          </Track.Thumb>
+        </Track>
+      </Grid>
+    </ControlTemplate>
+
+    <ControlTemplate x:Key="CadScrollBarHorizontal" TargetType="ScrollBar">
+      <Grid x:Name="Bg" Height="{TemplateBinding Height}" Background="{StaticResource Cad.ScrollTrack}" SnapsToDevicePixels="True">
+        <Track x:Name="PART_Track" IsDirectionReversed="False" Focusable="False">
+          <Track.DecreaseRepeatButton>
+            <RepeatButton Command="ScrollBar.PageLeftCommand" Focusable="False" IsTabStop="False" Opacity="0" />
+          </Track.DecreaseRepeatButton>
+          <Track.IncreaseRepeatButton>
+            <RepeatButton Command="ScrollBar.PageRightCommand" Focusable="False" IsTabStop="False" Opacity="0" />
+          </Track.IncreaseRepeatButton>
+          <Track.Thumb>
+            <Thumb>
+              <Thumb.Template>
+                <ControlTemplate TargetType="Thumb">
+                  <Border x:Name="T"
+                          Background="{StaticResource Cad.ScrollThumb}"
+                          CornerRadius="0"
+                          Margin="2,1"
+                          SnapsToDevicePixels="True" />
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="T" Property="Background" Value="{StaticResource Cad.ScrollThumbHover}" />
+                    </Trigger>
+                    <Trigger Property="IsDragging" Value="True">
+                      <Setter TargetName="T" Property="Background" Value="{StaticResource Cad.Accent}" />
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Thumb.Template>
+            </Thumb>
+          </Track.Thumb>
+        </Track>
+      </Grid>
+    </ControlTemplate>
+
+    <Style TargetType="ScrollBar">
+      <Setter Property="SnapsToDevicePixels" Value="True" />
+      <Setter Property="OverridesDefaultStyle" Value="True" />
+      <Setter Property="Width" Value="8" />
+      <Setter Property="MinWidth" Value="8" />
+      <Setter Property="MaxWidth" Value="8" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Template" Value="{StaticResource CadScrollBarVertical}" />
+      <Style.Triggers>
+        <Trigger Property="Orientation" Value="Horizontal">
+          <Setter Property="Width" Value="Auto" />
+          <Setter Property="MinWidth" Value="0" />
+          <Setter Property="MaxWidth" Value="{x:Static sys:Double.PositiveInfinity}" />
+          <Setter Property="Height" Value="8" />
+          <Setter Property="MinHeight" Value="8" />
+          <Setter Property="MaxHeight" Value="8" />
+          <Setter Property="Template" Value="{StaticResource CadScrollBarHorizontal}" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ToolbarChip" TargetType="Border" BasedOn="{StaticResource CadInfoChip}">
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="Margin" Value="0,0,8,8" />
+    </Style>
+
+    <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource CadToolButton}">
+      <Setter Property="MinWidth" Value="90" />
+    </Style>
+
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource CadPrimaryActionButton}">
+      <Setter Property="MinWidth" Value="90" />
+    </Style>
+
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="{StaticResource Cad.InputBg}" />
+      <Setter Property="Foreground" Value="#E6E8EA" />
+      <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CaretBrush" Value="#E6E8EA" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="DgHeader" TargetType="DataGridColumnHeader">
+      <Setter Property="Foreground" Value="#E6E8EA" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="16,14" />
+      <Setter Property="MinHeight" Value="42" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="DataGridColumnHeader">
+            <Border Background="{StaticResource Cad.GridHeaderBg}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="DgHeaderFirstColumn" TargetType="DataGridColumnHeader" BasedOn="{StaticResource DgHeader}">
+      <Setter Property="Padding" Value="28,14,16,14" />
+    </Style>
+
+    <Style x:Key="CadDataGridCell" TargetType="DataGridCell">
+      <Setter Property="Foreground" Value="#E6E8EA" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="16,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="13" />
+      <Style.Triggers>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Background" Value="Transparent" />
+          <Setter Property="Foreground" Value="#E6E8EA" />
+        </Trigger>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="{StaticResource Cad.GridRowHover}" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CadDataGridCellFirstColumn" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCell}">
+      <Setter Property="Padding" Value="28,0,16,0" />
+    </Style>
+
+    <Style x:Key="CadDataGridCellCheckBox" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCell}">
+      <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style x:Key="CadDgCellTextBlock" TargetType="TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="CadDataGrid" TargetType="DataGrid">
+      <Style.Resources>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#E6E8EA" />
+        <Style TargetType="ScrollBar">
+          <Setter Property="Width" Value="0" />
+          <Setter Property="Height" Value="0" />
+          <Setter Property="Opacity" Value="0" />
+          <Setter Property="IsHitTestVisible" Value="False" />
+          <Setter Property="Focusable" Value="False" />
+        </Style>
+      </Style.Resources>
+      <Setter Property="RowHeight" Value="36" />
+      <Setter Property="Background" Value="{StaticResource Cad.GridBg}" />
+      <Setter Property="Foreground" Value="#E6E8EA" />
+      <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Cad.GridLine}" />
+      <Setter Property="VerticalGridLinesBrush" Value="Transparent" />
+      <Setter Property="RowBackground" Value="{StaticResource Cad.GridRow}" />
+      <Setter Property="AlternatingRowBackground" Value="{StaticResource Cad.GridRowAlt}" />
+      <Setter Property="AlternationCount" Value="2" />
+      <Setter Property="HeadersVisibility" Value="Column" />
+      <Setter Property="CanUserAddRows" Value="False" />
+      <Setter Property="CanUserDeleteRows" Value="False" />
+      <Setter Property="CanUserResizeRows" Value="False" />
+      <Setter Property="CanUserReorderColumns" Value="False" />
+      <Setter Property="EnableRowVirtualization" Value="True" />
+      <Setter Property="EnableColumnVirtualization" Value="True" />
+      <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+      <Setter Property="ScrollViewer.PanningMode" Value="Both" />
+      <Setter Property="GridLinesVisibility" Value="Horizontal" />
+      <Setter Property="AutoGenerateColumns" Value="False" />
+      <Setter Property="SelectionMode" Value="Extended" />
+      <Setter Property="SelectionUnit" Value="FullRow" />
+      <Setter Property="IsReadOnly" Value="True" />
+      <Setter Property="RowHeaderWidth" Value="0" />
+      <Setter Property="ColumnHeaderStyle" Value="{StaticResource DgHeader}" />
+      <Setter Property="CellStyle" Value="{StaticResource CadDataGridCell}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="DataGrid">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    SnapsToDevicePixels="True">
+              <ScrollViewer x:Name="DG_ScrollViewer"
+                            Focusable="False"
+                            CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
+                            PanningMode="{TemplateBinding ScrollViewer.PanningMode}">
+                <ScrollViewer.Template>
+                  <ControlTemplate TargetType="ScrollViewer">
+                    <Grid>
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                      </Grid.RowDefinitions>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <Button Grid.Row="0"
+                              Grid.Column="0"
+                              Command="{x:Static DataGrid.SelectAllCommand}"
+                              Width="{Binding CellsPanelHorizontalOffset, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                              Focusable="False"
+                              Style="{DynamicResource {ComponentResourceKey TypeInTargetAssembly={x:Type DataGrid}, ResourceId=DataGridSelectAllButtonStyle}}"
+                              Visibility="{Binding HeadersVisibility, RelativeSource={RelativeSource AncestorType=DataGrid}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, ConverterParameter={x:Static DataGridHeadersVisibility.All}}" />
+                      <DataGridColumnHeadersPresenter x:Name="PART_ColumnHeadersPresenter"
+                                                      Grid.Row="0"
+                                                      Grid.Column="1"
+                                                      Visibility="{Binding HeadersVisibility, RelativeSource={RelativeSource AncestorType=DataGrid}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, ConverterParameter={x:Static DataGridHeadersVisibility.Column}}" />
+                      <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                              Grid.Row="1"
+                                              Grid.Column="0"
+                                              Grid.ColumnSpan="2"
+                                              CanContentScroll="{TemplateBinding CanContentScroll}" />
+                      <ScrollBar x:Name="PART_VerticalScrollBar"
+                                 Grid.Row="1"
+                                 Grid.Column="2"
+                                 Orientation="Vertical"
+                                 Maximum="{TemplateBinding ScrollableHeight}"
+                                 ViewportSize="{TemplateBinding ViewportHeight}"
+                                 Value="{Binding VerticalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}"
+                                 Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+                      <Grid Grid.Row="2" Grid.Column="1">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="{Binding NonFrozenColumnsViewportHorizontalOffset, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                          <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ScrollBar x:Name="PART_HorizontalScrollBar"
+                                   Grid.Column="1"
+                                   Orientation="Horizontal"
+                                   Maximum="{TemplateBinding ScrollableWidth}"
+                                   ViewportSize="{TemplateBinding ViewportWidth}"
+                                   Value="{Binding HorizontalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}"
+                                   Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" />
+                      </Grid>
+                    </Grid>
+                  </ControlTemplate>
+                </ScrollViewer.Template>
+                <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+              </ScrollViewer>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="CadAccentCheckBox" TargetType="CheckBox" BasedOn="{StaticResource CadAccentCheckBoxBase}">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Border BorderBrush="{StaticResource Cad.Border}"
+          BorderThickness="0"
+          CornerRadius="0"
+          SnapsToDevicePixels="True">
+    <DockPanel LastChildFill="True">
+      <Border DockPanel.Dock="Top"
+              Background="{StaticResource Cad.ToolbarBg}"
+              BorderBrush="{StaticResource Cad.Border}"
+              BorderThickness="0,0,0,1"
+              Padding="16,12,8,4">
+        <StackPanel>
+          <TextBlock Margin="0,0,0,8"
+                     Foreground="{StaticResource Cad.Muted}"
+                     Text="从设备清单导入名称，并批量写入选中块的隐藏属性。" />
+          <WrapPanel>
+            <Border Style="{StaticResource ToolbarChip}">
+              <StackPanel>
+                <TextBlock Text="Excel" Foreground="{StaticResource Cad.Muted}" />
+                <TextBlock Text="{Binding WorkbookPath}" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource ToolbarChip}">
+              <StackPanel>
+                <TextBlock Text="Sheet" Foreground="{StaticResource Cad.Muted}" />
+                <TextBlock Text="{Binding WorksheetName}" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource ToolbarChip}">
+              <StackPanel>
+                <TextBlock Text="字段" Foreground="{StaticResource Cad.Muted}" />
+                <TextBlock Text="{Binding ColumnHeader}" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource ToolbarChip}">
+              <StackPanel>
+                <TextBlock Text="选中块" Foreground="{StaticResource Cad.Muted}" />
+                <TextBlock Text="{Binding BlockSummaryText}" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource ToolbarChip}">
+              <StackPanel>
+                <TextBlock Text="设备名称" Foreground="{StaticResource Cad.Muted}" />
+                <TextBlock Text="{Binding DeviceSummaryText}" />
+              </StackPanel>
+            </Border>
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
+      <Border DockPanel.Dock="Bottom"
+              Background="{StaticResource Cad.HeaderBg}"
+              BorderBrush="{StaticResource Cad.Border}"
+              BorderThickness="0,1,0,0"
+              Padding="16,12">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0"
+                     VerticalAlignment="Center"
+                     Foreground="{StaticResource Cad.Muted}"
+                     Text="{Binding FooterStatusText}" />
+          <Button Grid.Column="1"
+                  Margin="12,0,0,0"
+                  Style="{StaticResource ToolButton}"
+                  Content="全选筛选项"
+                  Click="SelectFilteredButton_Click" />
+          <Button Grid.Column="2"
+                  Margin="8,0,0,0"
+                  Style="{StaticResource ToolButton}"
+                  Content="清空勾选"
+                  Click="ClearSelectionButton_Click" />
+          <Button Grid.Column="3"
+                  Margin="16,0,0,0"
+                  Style="{StaticResource PrimaryButton}"
+                  Content="写入"
+                  Click="OkButton_Click" />
+          <Button Grid.Column="4"
+                  Margin="8,0,0,0"
+                  Style="{StaticResource ToolButton}"
+                  Content="取消"
+                  Click="CancelButton_Click" />
+        </Grid>
+      </Border>
+
+      <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="1.15*" />
+          <ColumnDefinition Width="1.35*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0"
+                Background="{StaticResource Cad.Panel}"
+                BorderBrush="{StaticResource Cad.Border}"
+                BorderThickness="1"
+                Padding="12">
+          <DockPanel LastChildFill="True">
+            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+              <TextBlock Text="选中块" FontSize="14" FontWeight="SemiBold" />
+              <TextBlock Text="显示将被批量写入的块；动态图块按当前形态写入对应状态组，普通块按通用隐藏属性写入，V_BBB/BB 同步兼容读取。"
+                         Margin="0,4,0,0"
+                         Foreground="{StaticResource Cad.Muted}" />
+            </StackPanel>
+            <DataGrid Style="{StaticResource CadDataGrid}"
+                      BorderThickness="0"
+                      ItemsSource="{Binding Targets}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="句柄"
+                                    Binding="{Binding HandleText}"
+                                    Width="120"
+                                    HeaderStyle="{StaticResource DgHeaderFirstColumn}"
+                                    CellStyle="{StaticResource CadDataGridCellFirstColumn}"
+                                    ElementStyle="{StaticResource CadDgCellTextBlock}" />
+                <DataGridTextColumn Header="块名称"
+                                    Binding="{Binding BlockName}"
+                                    Width="1.45*"
+                                    ElementStyle="{StaticResource CadDgCellTextBlock}" />
+                <DataGridTextColumn Header="形态/类型"
+                                    Binding="{Binding StateDisplayText}"
+                                    Width="1.25*"
+                                    ElementStyle="{StaticResource CadDgCellTextBlock}" />
+                <DataGridTextColumn Header="当前隐形设备名称"
+                                    Binding="{Binding ExistingDeviceNamesText}"
+                                    Width="2.0*"
+                                    ElementStyle="{StaticResource CadDgCellTextBlock}" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </DockPanel>
+        </Border>
+
+        <Border Grid.Column="1"
+                Margin="16,0,0,0"
+                Background="{StaticResource Cad.Panel}"
+                BorderBrush="{StaticResource Cad.Border}"
+                BorderThickness="1"
+                Padding="12">
+          <DockPanel LastChildFill="True">
+            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+              <TextBlock Text="设备名称列表" FontSize="14" FontWeight="SemiBold" />
+              <TextBlock Text="读取“设备名称查找”表内“规范物料名称”列；支持多选，写入为隐藏属性。"
+                         Margin="0,4,0,8"
+                         Foreground="{StaticResource Cad.Muted}" />
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="24" />
+                  <ColumnDefinition Width="10" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <ContentControl Grid.Column="0"
+                                Style="{StaticResource CadSearchIconControl}"
+                                Width="16"
+                                Height="16"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+
+                <Border Grid.Column="2"
+                        Style="{StaticResource CadSearchFieldBorder}">
+                  <TextBox x:Name="SearchTextBox"
+                           Style="{StaticResource CadToolbarSearchBox}"
+                           Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                           TextChanged="SearchTextBox_OnTextChanged" />
+                </Border>
+              </Grid>
+            </StackPanel>
+            <DataGrid x:Name="DeviceNamesGrid"
+                      Style="{StaticResource CadDataGrid}"
+                      BorderThickness="0"
+                      IsReadOnly="False"
+                      ItemsSource="{Binding DeviceOptionsView}">
+              <DataGrid.Columns>
+                <DataGridTemplateColumn Header="勾选"
+                                        Width="80"
+                                        CanUserResize="False"
+                                        CellStyle="{StaticResource CadDataGridCellCheckBox}">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                      <CheckBox Style="{StaticResource CadAccentCheckBox}"
+                                IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="设备名称"
+                                    Binding="{Binding Name}"
+                                    Width="*"
+                                    HeaderStyle="{StaticResource DgHeaderFirstColumn}"
+                                    CellStyle="{StaticResource CadDataGridCellFirstColumn}"
+                                    ElementStyle="{StaticResource CadDgCellTextBlock}" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </DockPanel>
+        </Border>
+      </Grid>
+    </DockPanel>
+  </Border>
+</Window>

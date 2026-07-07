@@ -1,0 +1,160 @@
+<UserControl x:Class="C_toolsPlugin.PathsInfoPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:C_toolsPlugin"
+             Background="#16191F"
+             Foreground="#E8EAED"
+             FontFamily="Microsoft YaHei UI, Segoe UI"
+             FontSize="12">
+  <UserControl.Resources>
+    <SolidColorBrush x:Key="Cad.Border" Color="#21262D" />
+    <SolidColorBrush x:Key="Cad.InputBg" Color="#262C38" />
+    <SolidColorBrush x:Key="Cad.Muted" Color="#8B949E" />
+    <SolidColorBrush x:Key="Cad.Success" Color="#3FB950" />
+    <SolidColorBrush x:Key="Cad.Warning" Color="#F59E0B" />
+    <SolidColorBrush x:Key="Cad.Error" Color="#EF4444" />
+    <SolidColorBrush x:Key="Cad.HoverBg" Color="#303642" />
+    <Style x:Key="PathsPathTextBox" TargetType="TextBox">
+      <Setter Property="Foreground" Value="#E6E8EA" />
+      <Setter Property="CaretBrush" Value="#E6E8EA" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="IsReadOnly" Value="True" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+              <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                            HorizontalScrollBarVisibility="Hidden"
+                            VerticalScrollBarVisibility="Hidden" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="ActionButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="#8B949E" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Padding" Value="8,2" />
+      <Setter Property="Margin" Value="4,0,0,0" />
+      <Setter Property="MinWidth" Value="42" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" 
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    CornerRadius="3"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource Cad.HoverBg}" />
+                <Setter Property="Foreground" Value="#E8EAED" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="#5A6470" />
+                <Setter Property="Cursor" Value="Arrow" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </UserControl.Resources>
+  <ScrollViewer VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled"
+                Padding="16,0,16,12">
+    <StackPanel>
+      <ItemsControl ItemsSource="{Binding Sections}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="{x:Type local:PathsInfoSectionVm}">
+            <StackPanel Margin="0,0,0,24">
+              <TextBlock Text="{Binding Title}"
+                         FontWeight="SemiBold"
+                         FontSize="14"
+                         Foreground="#E8EAED"
+                         Margin="0,0,0,16" />
+              <ItemsControl ItemsSource="{Binding Rows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type local:PathsInfoRowVm}">
+                    <Grid Margin="0,0,0,8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="*" MinWidth="160" />
+                        <ColumnDefinition Width="*" MinWidth="240" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <Border Grid.Column="0"
+                              Width="16"
+                              Height="16"
+                              CornerRadius="8"
+                              VerticalAlignment="Center"
+                              Margin="0,0,8,0">
+                        <Border.Background>
+                          <Binding Path="Status">
+                            <Binding.Converter>
+                              <local:StatusToBrushConverter />
+                            </Binding.Converter>
+                          </Binding>
+                        </Border.Background>
+                        <TextBlock Text="{Binding StatusIcon}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="10"
+                                   FontWeight="Bold" />
+                      </Border>
+                      <TextBlock Grid.Column="1"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,12,0"
+                                 Foreground="{StaticResource Cad.Muted}"
+                                 TextWrapping="Wrap"
+                                 Text="{Binding Title}" />
+                      <Border Grid.Column="2"
+                              Padding="10,8"
+                              VerticalAlignment="Center"
+                              Background="{StaticResource Cad.InputBg}"
+                              BorderBrush="{StaticResource Cad.Border}"
+                              BorderThickness="1"
+                              CornerRadius="4"
+                              ToolTip="{Binding Hint}">
+                        <TextBox Style="{StaticResource PathsPathTextBox}"
+                                 Text="{Binding PathText}" />
+                      </Border>
+                      <StackPanel Grid.Column="3"
+                                  Orientation="Horizontal"
+                                  VerticalAlignment="Center">
+                        <Button Style="{StaticResource ActionButton}"
+                                Command="{Binding CopyCommand}"
+                                ToolTip="复制路径">
+                          <TextBlock Text="复制" FontSize="11" />
+                        </Button>
+                        <Button Style="{StaticResource ActionButton}"
+                                Command="{Binding OpenCommand}"
+                                IsEnabled="{Binding CanOpen}"
+                                ToolTip="打开目录">
+                          <TextBlock Text="打开" FontSize="11" />
+                        </Button>
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

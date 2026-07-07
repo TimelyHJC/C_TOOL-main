@@ -1,0 +1,1544 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib"
+                    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework">
+  <!-- 共享控件模板在独立 WPF 宿主里会直接解析本字典内的 StaticResource，
+       这里重复声明 Cad 基础色键，避免依赖兄弟 merged dictionary 的运行时查找。 -->
+  <SolidColorBrush x:Key="Cad.Panel" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.Border" Color="#21262D" />
+  <SolidColorBrush x:Key="Cad.Muted" Color="#8B949E" />
+  <SolidColorBrush x:Key="Cad.Accent" Color="#58A6FF" />
+  <SolidColorBrush x:Key="Cad.RowAlt" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.HeaderBg" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.InputBg" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.GridBg" Color="#16191F" />
+  <SolidColorBrush x:Key="Cad.GridHeaderBg" Color="#1B1F28" />
+  <SolidColorBrush x:Key="Cad.GridRow" Color="#12141A" />
+  <SolidColorBrush x:Key="Cad.GridRowAlt" Color="#12141A" />
+  <SolidColorBrush x:Key="Cad.GridLine" Color="#252B36" />
+  <SolidColorBrush x:Key="Cad.GridRowHover" Color="#222731" />
+  <SolidColorBrush x:Key="Cad.ScrollTrack" Color="#10151C" />
+  <SolidColorBrush x:Key="Cad.ScrollThumb" Color="#3D4756" />
+  <SolidColorBrush x:Key="Cad.ScrollThumbHover" Color="#4E5A6A" />
+  <SolidColorBrush x:Key="Cad.ButtonPrimary" Color="#1E77B4" />
+  <SolidColorBrush x:Key="Cad.ToolbarBg" Color="#323B4A" />
+  <SolidColorBrush x:Key="Cad.StatusLine" Color="#30363D" />
+  <SolidColorBrush x:Key="Cad.TabIdle" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.TabHover" Color="#2C3340" />
+  <SolidColorBrush x:Key="Cad.TabSelected" Color="#262C38" />
+
+  <ControlTemplate x:Key="CadScrollBarVertical" TargetType="ScrollBar">
+    <Grid x:Name="Bg"
+          Width="{TemplateBinding Width}"
+          Background="Transparent"
+          SnapsToDevicePixels="True">
+      <Track x:Name="PART_Track" IsDirectionReversed="True" Focusable="False">
+        <Track.DecreaseRepeatButton>
+          <RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" IsTabStop="False" Opacity="0" />
+        </Track.DecreaseRepeatButton>
+        <Track.IncreaseRepeatButton>
+          <RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" IsTabStop="False" Opacity="0" />
+        </Track.IncreaseRepeatButton>
+        <Track.Thumb>
+          <Thumb>
+            <Thumb.Template>
+              <ControlTemplate TargetType="Thumb">
+                <Border x:Name="T"
+                        Background="{StaticResource Cad.ScrollThumb}"
+                        CornerRadius="4"
+                        Margin="1,3"
+                        SnapsToDevicePixels="True" />
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="T" Property="Background" Value="{StaticResource Cad.ScrollThumbHover}" />
+                  </Trigger>
+                  <Trigger Property="IsDragging" Value="True">
+                    <Setter TargetName="T" Property="Background" Value="{StaticResource Cad.Accent}" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Thumb.Template>
+          </Thumb>
+        </Track.Thumb>
+      </Track>
+    </Grid>
+  </ControlTemplate>
+
+  <ControlTemplate x:Key="CadScrollBarHorizontal" TargetType="ScrollBar">
+    <Grid x:Name="Bg"
+          Height="{TemplateBinding Height}"
+          Background="Transparent"
+          SnapsToDevicePixels="True">
+      <Track x:Name="PART_Track" IsDirectionReversed="False" Focusable="False">
+        <Track.DecreaseRepeatButton>
+          <RepeatButton Command="ScrollBar.PageLeftCommand" Focusable="False" IsTabStop="False" Opacity="0" />
+        </Track.DecreaseRepeatButton>
+        <Track.IncreaseRepeatButton>
+          <RepeatButton Command="ScrollBar.PageRightCommand" Focusable="False" IsTabStop="False" Opacity="0" />
+        </Track.IncreaseRepeatButton>
+        <Track.Thumb>
+          <Thumb>
+            <Thumb.Template>
+              <ControlTemplate TargetType="Thumb">
+                <Border x:Name="T"
+                        Background="{StaticResource Cad.ScrollThumb}"
+                        CornerRadius="4"
+                        Margin="3,1"
+                        SnapsToDevicePixels="True" />
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="T" Property="Background" Value="{StaticResource Cad.ScrollThumbHover}" />
+                  </Trigger>
+                  <Trigger Property="IsDragging" Value="True">
+                    <Setter TargetName="T" Property="Background" Value="{StaticResource Cad.Accent}" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Thumb.Template>
+          </Thumb>
+        </Track.Thumb>
+      </Track>
+    </Grid>
+  </ControlTemplate>
+
+  <Style x:Key="CadBaseScrollBar" TargetType="ScrollBar">
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="OverridesDefaultStyle" Value="True" />
+    <Setter Property="Width" Value="8" />
+    <Setter Property="MinWidth" Value="8" />
+    <Setter Property="MaxWidth" Value="8" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Template" Value="{StaticResource CadScrollBarVertical}" />
+    <Style.Triggers>
+      <Trigger Property="Orientation" Value="Horizontal">
+        <Setter Property="Width" Value="Auto" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MaxWidth" Value="{x:Static sys:Double.PositiveInfinity}" />
+        <Setter Property="Height" Value="8" />
+        <Setter Property="MinHeight" Value="8" />
+        <Setter Property="MaxHeight" Value="8" />
+        <Setter Property="Template" Value="{StaticResource CadScrollBarHorizontal}" />
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <Style TargetType="ScrollBar" BasedOn="{StaticResource CadBaseScrollBar}" />
+
+  <Style x:Key="CadBaseButton" TargetType="Button">
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Background" Value="#2D333B" />
+    <Setter Property="Foreground" Value="#E6E8EA" />
+    <Setter Property="BorderBrush" Value="#444C56" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="#2D333B"
+                  BorderBrush="#444C56"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="4"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#363D47" />
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#1E2630" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="#6D7682" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style TargetType="Button" BasedOn="{StaticResource CadBaseButton}" />
+
+  <Style x:Key="CadBasePrimaryButton" TargetType="Button" BasedOn="{StaticResource CadBaseButton}">
+    <Setter Property="Background" Value="{StaticResource Cad.ButtonPrimary}" />
+    <Setter Property="Foreground" Value="#FFFFFF" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.ButtonPrimary}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="#1E77B4"
+                  BorderBrush="#1E77B4"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="4"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#2386CC" />
+              <Setter TargetName="Bd" Property="BorderBrush" Value="#2386CC" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#1664A8" />
+              <Setter TargetName="Bd" Property="BorderBrush" Value="#1664A8" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="#6D7682" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource CadBasePrimaryButton}" />
+
+  <Style x:Key="CadToolButton" TargetType="Button" BasedOn="{StaticResource CadBaseButton}">
+    <Setter Property="MinWidth" Value="88" />
+  </Style>
+
+  <Style x:Key="CadToolbarMiniButton" TargetType="Button" BasedOn="{StaticResource CadBaseButton}">
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style x:Key="CadPrimaryActionButton" TargetType="Button" BasedOn="{StaticResource CadBasePrimaryButton}">
+    <Setter Property="MinWidth" Value="88" />
+  </Style>
+
+  <Style x:Key="CadRoundedTitleButton" TargetType="Button">
+    <Setter Property="Width" Value="34" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="#B6C1DD" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="Transparent"
+                  CornerRadius="8">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#313750" />
+              <Setter Property="Foreground" Value="#FFFFFF" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#202538" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadRoundedIconButton" TargetType="Button" BasedOn="{StaticResource CadRoundedTitleButton}">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Foreground" Value="{StaticResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="Transparent"
+                  CornerRadius="8">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#313750" />
+              <Setter Property="Foreground" Value="#FFFFFF" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadToolbarIconButton" TargetType="Button">
+    <Setter Property="Width" Value="34" />
+    <Setter Property="MinWidth" Value="34" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="MinHeight" Value="30" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{StaticResource Cad.Muted}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="UseLayoutRounding" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="Transparent"
+                  CornerRadius="8">
+            <ContentPresenter HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#313750" />
+              <Setter Property="Foreground" Value="#FFFFFF" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#202538" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadToolbarIconButtonLarge" TargetType="Button" BasedOn="{StaticResource CadToolbarIconButton}">
+    <Setter Property="Width" Value="40" />
+    <Setter Property="MinWidth" Value="40" />
+    <Setter Property="Height" Value="40" />
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="FontSize" Value="18" />
+  </Style>
+
+  <Style x:Key="CadRadioTabButton" TargetType="RadioButton">
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Foreground" Value="#8B949E" />
+    <Setter Property="Background" Value="{StaticResource Cad.TabIdle}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="1,1,1,0" />
+    <Setter Property="Padding" Value="12,10" />
+    <Setter Property="Margin" Value="0,0,2,0" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Grid Margin="{TemplateBinding Margin}">
+            <Border x:Name="TabBd"
+                    Background="{StaticResource Cad.TabIdle}"
+                    BorderBrush="{StaticResource Cad.Border}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="0"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True" />
+            </Border>
+            <Border x:Name="TabAccent"
+                    Height="2"
+                    VerticalAlignment="Bottom"
+                    Background="Transparent"
+                    CornerRadius="0" />
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="TabBd" Property="Background" Value="{StaticResource Cad.TabSelected}" />
+              <Setter TargetName="TabAccent" Property="Background" Value="{StaticResource Cad.Accent}" />
+              <Setter Property="Foreground" Value="#FFFFFF" />
+            </Trigger>
+            <MultiTrigger>
+              <MultiTrigger.Conditions>
+                <Condition Property="IsChecked" Value="False" />
+                <Condition Property="IsMouseOver" Value="True" />
+              </MultiTrigger.Conditions>
+              <Setter TargetName="TabBd" Property="Background" Value="{StaticResource Cad.TabHover}" />
+              <Setter Property="Foreground" Value="#E6E8EA" />
+            </MultiTrigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadAccentCheckBoxBase" TargetType="CheckBox">
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="CheckBox">
+          <Grid Width="18" Height="18" SnapsToDevicePixels="True">
+            <Border x:Name="Bd"
+                    Width="18"
+                    Height="18"
+                    CornerRadius="0"
+                    BorderBrush="#FFFFFF"
+                    BorderThickness="1"
+                    Background="Transparent" />
+            <Path x:Name="Mark"
+                  Data="M 4,9.5 L 7.5,13 L 14,5"
+                  Stroke="White"
+                  StrokeThickness="2"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  Fill="{x:Null}"
+                  Visibility="Collapsed"
+                  VerticalAlignment="Center"
+                  HorizontalAlignment="Center" />
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource Cad.Accent}" />
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+              <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+              <Setter TargetName="Mark" Property="Opacity" Value="0.45" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadWidePageWindow" TargetType="Window">
+    <Setter Property="WindowStyle" Value="SingleBorderWindow" />
+    <Setter Property="ResizeMode" Value="CanResize" />
+    <Setter Property="ShowInTaskbar" Value="False" />
+    <Setter Property="ShowActivated" Value="False" />
+    <Setter Property="Topmost" Value="False" />
+    <!-- AutoCAD 2024 模型窗口首帧套模板时，跨字典 DynamicResource 可能短暂给出 UnsetValue。 -->
+    <Setter Property="Background" Value="#262C38" />
+    <Setter Property="BorderBrush" Value="#21262D" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="#E8EAED" />
+    <Setter Property="FontFamily" Value="Microsoft YaHei UI, Segoe UI" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style x:Key="CadWidePageFrame" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource Cad.Panel}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+  </Style>
+
+  <Style x:Key="CadInfoChip" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource Cad.InputBg}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <Style x:Key="CadWidePageToolbar" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource Cad.ToolbarBg}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="16,14" />
+  </Style>
+
+  <Style x:Key="CadWidePageTabsBar" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource Cad.RowAlt}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="MinHeight" Value="56" />
+    <Setter Property="Padding" Value="14,0,14,0" />
+  </Style>
+
+  <Style x:Key="CadWidePageStatusBar" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource Cad.RowAlt}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.StatusLine}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="14,10" />
+  </Style>
+
+  <Style x:Key="CadWidePageStatusText" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Cad.Muted}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <Style x:Key="CadBaseTextBox" TargetType="TextBox">
+    <Setter Property="Background" Value="{StaticResource Cad.InputBg}" />
+    <Setter Property="Foreground" Value="#E6E8EA" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CaretBrush" Value="#E6E8EA" />
+    <Setter Property="Padding" Value="8,6" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TextBox">
+          <Border x:Name="Bd"
+                  Background="{StaticResource Cad.InputBg}"
+                  BorderBrush="{StaticResource Cad.Border}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="4"
+                  Padding="{TemplateBinding Padding}">
+            <ScrollViewer x:Name="PART_ContentHost"
+                          Focusable="False"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Hidden" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsFocused" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Bd" Property="Opacity" Value="0.7" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style TargetType="TextBox" BasedOn="{StaticResource CadBaseTextBox}" />
+
+  <Style x:Key="CadAutoScrollTextBox" TargetType="TextBox">
+    <Setter Property="Background" Value="{StaticResource Cad.InputBg}" />
+    <Setter Property="Foreground" Value="#E6E8EA" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CaretBrush" Value="#E6E8EA" />
+    <Setter Property="Padding" Value="8,6" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TextBox">
+          <Border x:Name="Bd"
+                  Background="{StaticResource Cad.InputBg}"
+                  BorderBrush="{StaticResource Cad.Border}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="4"
+                  Padding="{TemplateBinding Padding}">
+            <ScrollViewer x:Name="PART_ContentHost"
+                          Focusable="False"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Hidden" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsFocused" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadReadOnlyPathTextBox" TargetType="TextBox" BasedOn="{StaticResource CadAutoScrollTextBox}">
+    <Setter Property="IsReadOnly" Value="True" />
+  </Style>
+
+  <Style x:Key="CadCompactReadOnlyPathTextBox" TargetType="TextBox" BasedOn="{StaticResource CadReadOnlyPathTextBox}">
+    <Setter Property="Height" Value="32" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Padding" Value="8,0" />
+  </Style>
+
+  <Style x:Key="CadSearchIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="103.4"
+                    Height="103.41">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-6.07" Y="-0.61" />
+              </Canvas.RenderTransform>
+              <Ellipse Canvas.Left="9.07"
+                       Canvas.Top="3.61"
+                       Width="75"
+                       Height="75"
+                       Stroke="{TemplateBinding Foreground}"
+                       StrokeThickness="6" />
+              <Line X1="78.47"
+                    Y1="73.02"
+                    X2="106.47"
+                    Y2="101.02"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadSearchFieldBorder" TargetType="Border">
+    <Setter Property="Height" Value="32" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Background" Value="{DynamicResource Cad.InputBg}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+  </Style>
+
+  <Style x:Key="CadFolderIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="UseLayoutRounding" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="24"
+                    Height="24"
+                    UseLayoutRounding="True"
+                    SnapsToDevicePixels="True">
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="2.05"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    StrokeLineJoin="Round"
+                    Data="M 4.05 16.55 L 4.05 6.4 A 1.55 1.55 0 0 1 5.6 4.85 L 10.4 4.85 A 1.55 1.55 0 0 1 11.8 5.65 L 12.95 7.9 A 1.55 1.55 0 0 0 14.35 8.7 L 19.9 8.7 A 1.45 1.45 0 0 1 21.35 10.15 L 21.35 11.35" />
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="2.05"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    StrokeLineJoin="Round"
+                    Data="M 20.15 9.55 H 9.25 A 1.3 1.3 0 0 0 8 10.45 L 5.45 18.65 H 19.45 A 1.35 1.35 0 0 0 20.75 17.7 L 22.3 10.95 A 1.15 1.15 0 0 0 21.2 9.55 Z" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadTrashIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="17" />
+    <Setter Property="Height" Value="17" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="106.6"
+                    Height="107.37">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="0" Y="-259.81" />
+              </Canvas.RenderTransform>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    Data="M211.21,355.36V437.3a6,6,0,0,1-6,6H143.67a6,6,0,0,1-6-6V355.36">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Line X1="3"
+                    Y1="276.24"
+                    X2="103.6"
+                    Y2="276.24"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    Data="M197,355.36v-7.43a6,6,0,0,0-6-6h-33.2a6,6,0,0,0-6,6v7.43">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Line X1="53.3"
+                    Y1="295.91"
+                    X2="53.3"
+                    Y2="344.85"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Line X1="71.78"
+                    Y1="301.79"
+                    X2="71.78"
+                    Y2="338.97"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Line X1="34.81"
+                    Y1="301.79"
+                    X2="34.81"
+                    Y2="338.97"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadAddIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="86"
+                    Height="86">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-484.07" Y="-521.82" />
+              </Canvas.RenderTransform>
+              <Line X1="487.07"
+                    Y1="564.82"
+                    X2="567.07"
+                    Y2="564.82"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Line X1="527.07"
+                    Y1="604.82"
+                    X2="527.07"
+                    Y2="524.82"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadRefreshIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="96.01"
+                    Height="96.01">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-480.11" Y="0.03" />
+              </Canvas.RenderTransform>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M694.26,127.12a45,45,0,1,1-2.36-14.4">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Polyline Points="573.12,15.57 573.12,33.57 555.12,33.57"
+                        Stroke="{TemplateBinding Foreground}"
+                        StrokeThickness="6"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round"
+                        StrokeLineJoin="Miter" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadUpdateIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="96.01"
+                    Height="96.01">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-715.7" Y="0.03" />
+              </Canvas.RenderTransform>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M929.85,127.12a45,45,0,1,1-2.36-14.4">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Polyline Points="808.71,15.57 808.71,33.57 790.71,33.57"
+                        Stroke="{TemplateBinding Foreground}"
+                        StrokeThickness="6"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round"
+                        StrokeLineJoin="Miter" />
+              <Polyline Points="763.22,24.31 763.22,48.45 742.04,60.85"
+                        Stroke="{TemplateBinding Foreground}"
+                        StrokeThickness="6"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round"
+                        StrokeLineJoin="Miter" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadImportIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="85.33"
+                    Height="89.11">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-484.62" Y="-273.27" />
+              </Canvas.RenderTransform>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M688.09,410.05V432.5a6,6,0,0,1-6,6H614.76a6,6,0,0,1-6-6V410.05">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Line X1="527.28"
+                    Y1="276.27"
+                    X2="527.28"
+                    Y2="334.25"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M665.92,398.71l-16.8,16.4a1,1,0,0,1-1.4,0l-16.8-16.4">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadExportIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="85.3"
+                    Height="88.68">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-720.56" Y="-273.7" />
+              </Canvas.RenderTransform>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M924,410.05V432.5a6,6,0,0,1-6,6H850.7a6,6,0,0,1-6-6V410.05">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Line X1="763.22"
+                    Y1="336.72"
+                    X2="763.22"
+                    Y2="283.46"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M901.86,372.25l-16.8-16.14a1,1,0,0,0-1.4,0l-16.8,16.14">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadRectSelectIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="86"
+                    Height="86">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-248.12" Y="-271.29" />
+              </Canvas.RenderTransform>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M372.26,372.94V359.41a6,6,0,0,1,6-6H391.8">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Line X1="251.12"
+                    Y1="325.29"
+                    X2="251.12"
+                    Y2="303.3"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M391.8,433.41H378.26a6,6,0,0,1-6-6V413.88">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Line X1="302.12"
+                    Y1="354.29"
+                    X2="280.13"
+                    Y2="354.29"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M452.26,413.88v13.53a6,6,0,0,1-6,6H432.73">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Line X1="331.12"
+                    Y1="303.3"
+                    X2="331.12"
+                    Y2="325.29"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Line X1="280.13"
+                    Y1="274.29"
+                    X2="302.12"
+                    Y2="274.29"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M432.73,353.41h13.53a6,6,0,0,1,6,6v13.53">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadCircleSelectIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="24"
+                    Height="24">
+              <Ellipse Canvas.Left="4.2"
+                       Canvas.Top="4.2"
+                       Width="15.6"
+                       Height="15.6"
+                       Stroke="{TemplateBinding Foreground}"
+                       StrokeThickness="1.9" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadPreviewIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="79"
+                    Height="91.41">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-14.33" Y="-518.88" />
+              </Canvas.RenderTransform>
+              <Line X1="45.7"
+                    Y1="564.43"
+                    X2="30.8"
+                    Y2="564.43"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Line X1="37.62"
+                    Y1="588.61"
+                    X2="30.8"
+                    Y2="588.61"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Line X1="75.99"
+                    Y1="540.24"
+                    X2="30.8"
+                    Y2="540.24"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M186.75,686.12H144.47a6,6,0,0,1-6-6V605.21A4.23,4.23,0,0,1,142.7,601h64.53a4.24,4.24,0,0,1,4.24,4.24V661.4">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Ellipse Canvas.Left="50.33"
+                       Canvas.Top="567.29"
+                       Width="30.8"
+                       Height="30.8"
+                       Stroke="{TemplateBinding Foreground}"
+                       StrokeThickness="6" />
+              <Line X1="78.83"
+                    Y1="595.79"
+                    X2="90.33"
+                    Y2="607.29"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadPrintIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="91.22"
+                    Height="91.62">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-246.2" Y="-518.88" />
+              </Canvas.RenderTransform>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M455.56,622.06v37.15a6,6,0,0,1-6,6H438V652.42H388v12.79H376.34a6,6,0,0,1-6-6V622.06a6,6,0,0,1,6-6h73.22A6,6,0,0,1,455.56,622.06Z">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M437.6,607v9.1H388.31V607a6,6,0,0,1,6-6H431.6A6,6,0,0,1,437.6,607Z">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Path Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Data="M438,652.42v28.2a6,6,0,0,1-6,6H394a6,6,0,0,1-6-6v-28.2Z">
+                <Path.RenderTransform>
+                  <TranslateTransform X="-121.14" Y="-79.12" />
+                </Path.RenderTransform>
+              </Path>
+              <Ellipse Canvas.Left="316.97"
+                       Canvas.Top="547.25"
+                       Width="4"
+                       Height="4"
+                       Stroke="{TemplateBinding Foreground}"
+                       StrokeThickness="6" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadInfoIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="91"
+                    Height="91">
+              <Canvas.RenderTransform>
+                <TranslateTransform X="-717.66" Y="-519.32" />
+              </Canvas.RenderTransform>
+              <Line X1="763.16"
+                    Y1="592.46"
+                    X2="763.16"
+                    Y2="556.77"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="6"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round" />
+              <Ellipse Canvas.Left="761.66"
+                       Canvas.Top="537.4"
+                       Width="3"
+                       Height="3"
+                       Stroke="{TemplateBinding Foreground}"
+                       StrokeThickness="6" />
+              <Ellipse Canvas.Left="720.66"
+                       Canvas.Top="522.32"
+                       Width="85"
+                       Height="85"
+                       Stroke="{TemplateBinding Foreground}"
+                       StrokeThickness="6" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadSettingsIconControl" TargetType="ContentControl">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Cad.Muted}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ContentControl">
+          <Viewbox Width="{TemplateBinding Width}"
+                   Height="{TemplateBinding Height}"
+                   Stretch="Uniform"
+                   SnapsToDevicePixels="True">
+            <Canvas Width="24"
+                    Height="24">
+              <Path Data="M 10.1 2.9 L 13.9 2.9 L 14.45 5.15 L 16.25 5.9 L 18.15 4.5 L 20.8 7.2 L 19.4 9.1 L 20.15 10.9 L 22.45 11.45 L 22.45 14.55 L 20.15 15.1 L 19.4 16.9 L 20.8 18.8 L 18.15 21.5 L 16.25 20.1 L 14.45 20.85 L 13.9 23.1 L 10.1 23.1 L 9.55 20.85 L 7.75 20.1 L 5.85 21.5 L 3.2 18.8 L 4.6 16.9 L 3.85 15.1 L 1.55 14.55 L 1.55 11.45 L 3.85 10.9 L 4.6 9.1 L 3.2 7.2 L 5.85 4.5 L 7.75 5.9 L 9.55 5.15 Z"
+                    Stroke="{TemplateBinding Foreground}"
+                    StrokeThickness="1.7"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    StrokeLineJoin="Round" />
+              <Ellipse Canvas.Left="8.1"
+                       Canvas.Top="8.1"
+                       Width="7.8"
+                       Height="7.8"
+                       Stroke="{TemplateBinding Foreground}"
+                       StrokeThickness="1.7" />
+            </Canvas>
+          </Viewbox>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadToolbarSearchBox" TargetType="TextBox">
+    <Setter Property="Foreground" Value="#E6E8EA" />
+    <Setter Property="CaretBrush" Value="#E6E8EA" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource Cad.Accent}" />
+    <Setter Property="SelectionOpacity" Value="0.85" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TextBox">
+          <Border Background="Transparent"
+                  Padding="{TemplateBinding Padding}">
+            <ScrollViewer x:Name="PART_ContentHost"
+                          Focusable="False"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Hidden" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.7" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadHeaderTabItem" TargetType="TabItem">
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Foreground" Value="#8B949E" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="Margin" Value="0,0,2,0" />
+    <Setter Property="MinHeight" Value="48" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TabItem">
+          <Grid Margin="{TemplateBinding Margin}">
+            <Border x:Name="TabBd"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="0"
+                    Padding="{TemplateBinding Padding}"
+                    SnapsToDevicePixels="True">
+              <ContentPresenter x:Name="ContentSite"
+                                ContentSource="Header"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True" />
+            </Border>
+            <Border x:Name="TabAccent"
+                    Height="2"
+                    VerticalAlignment="Bottom"
+                    Background="Transparent"
+                    CornerRadius="0" />
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="TabAccent" Property="Background" Value="{StaticResource Cad.Accent}" />
+              <Setter Property="Foreground" Value="#FFFFFF" />
+            </Trigger>
+            <MultiTrigger>
+              <MultiTrigger.Conditions>
+                <Condition Property="IsSelected" Value="False" />
+                <Condition Property="IsMouseOver" Value="True" />
+              </MultiTrigger.Conditions>
+              <Setter Property="Foreground" Value="#E6E8EA" />
+            </MultiTrigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadHeaderTabs" TargetType="TabControl">
+    <Setter Property="Background" Value="{StaticResource Cad.Panel}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="ItemContainerStyle" Value="{StaticResource CadHeaderTabItem}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TabControl">
+          <Grid SnapsToDevicePixels="True"
+                KeyboardNavigation.TabNavigation="Local"
+                ClipToBounds="True">
+            <TabPanel x:Name="HeaderPanel"
+                      Margin="0"
+                      Panel.ZIndex="1"
+                      VerticalAlignment="Stretch"
+                      Background="Transparent"
+                      IsItemsHost="True"
+                      KeyboardNavigation.TabIndex="1" />
+          </Grid>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadContentTabs" TargetType="TabControl">
+    <Setter Property="Background" Value="{StaticResource Cad.Panel}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="ItemContainerStyle" Value="{StaticResource CadHeaderTabItem}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TabControl">
+          <Grid KeyboardNavigation.TabNavigation="Local"
+                SnapsToDevicePixels="True"
+                ClipToBounds="True">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="56" />
+              <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0"
+                    Background="{StaticResource Cad.RowAlt}"
+                    BorderBrush="{StaticResource Cad.Border}"
+                    BorderThickness="0,0,0,1">
+              <TabPanel x:Name="HeaderPanel"
+                        Margin="14,0,14,0"
+                        VerticalAlignment="Stretch"
+                        IsItemsHost="True"
+                        Panel.ZIndex="1"
+                        KeyboardNavigation.TabIndex="1" />
+            </Border>
+            <ContentPresenter x:Name="PART_SelectedContentHost"
+                              Grid.Row="1"
+                              ContentSource="SelectedContent"
+                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
+                              KeyboardNavigation.TabIndex="2" />
+          </Grid>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadToolbarComboEditableTextBox" TargetType="TextBox">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="#E6E8EA" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="8,0,4,0" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CaretBrush" Value="#E6E8EA" />
+    <Setter Property="SelectionBrush" Value="{StaticResource Cad.Accent}" />
+    <Setter Property="SelectionOpacity" Value="0.6" />
+    <Setter Property="ContextMenu" Value="{x:Null}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TextBox">
+          <ScrollViewer x:Name="PART_ContentHost"
+                        Background="Transparent"
+                        Focusable="False"
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Hidden" />
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CadToolbarComboBox" TargetType="ComboBox">
+    <Setter Property="Background" Value="{StaticResource Cad.InputBg}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="#E6E8EA" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+    <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+    <Setter Property="ItemContainerStyle">
+      <Setter.Value>
+        <Style TargetType="ComboBoxItem">
+          <Setter Property="Foreground" Value="#E6E8EA" />
+          <Setter Property="Background" Value="{StaticResource Cad.InputBg}" />
+          <Setter Property="Padding" Value="8,6" />
+          <Style.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+              <Setter Property="Background" Value="{StaticResource Cad.GridRowHover}" />
+            </Trigger>
+          </Style.Triggers>
+        </Style>
+      </Setter.Value>
+    </Setter>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ComboBox">
+          <Grid SnapsToDevicePixels="True">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="22" />
+            </Grid.ColumnDefinitions>
+            <Border x:Name="Bd"
+                    Grid.ColumnSpan="2"
+                    Background="{StaticResource Cad.InputBg}"
+                    BorderThickness="0"
+                    CornerRadius="0" />
+            <ContentPresenter x:Name="ContentSite"
+                              Grid.Column="0"
+                              Margin="8,0,4,0"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center"
+                              IsHitTestVisible="False"
+                              Content="{TemplateBinding SelectionBoxItem}"
+                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+            <ToggleButton x:Name="PART_ToggleButton"
+                          Grid.ColumnSpan="2"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Focusable="False"
+                          ClickMode="Press"
+                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+              <ToggleButton.Template>
+                <ControlTemplate TargetType="ToggleButton">
+                  <Border Background="Transparent" />
+                </ControlTemplate>
+              </ToggleButton.Template>
+            </ToggleButton>
+            <TextBox x:Name="PART_EditableTextBox"
+                     Grid.Column="0"
+                     Style="{StaticResource CadToolbarComboEditableTextBox}"
+                     Visibility="Collapsed"
+                     Foreground="{TemplateBinding Foreground}"
+                     IsReadOnly="{TemplateBinding IsReadOnly}" />
+            <Path Grid.Column="1"
+                  Width="8"
+                  Height="5"
+                  Margin="0,0,8,0"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Data="M 0,0 L 8,0 L 4,5 Z"
+                  Fill="#8B949E"
+                  IsHitTestVisible="False" />
+            <Popup x:Name="PART_Popup"
+                   AllowsTransparency="True"
+                   Focusable="False"
+                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                   Placement="Bottom"
+                   PlacementTarget="{Binding ElementName=Bd}"
+                   PopupAnimation="Slide">
+              <Border MinWidth="{Binding ActualWidth, ElementName=Bd}"
+                      MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                      Background="{StaticResource Cad.InputBg}"
+                      BorderBrush="{StaticResource Cad.Border}"
+                      BorderThickness="1"
+                      SnapsToDevicePixels="True">
+                <ScrollViewer Margin="0"
+                              SnapsToDevicePixels="True"
+                              CanContentScroll="True"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                  <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                </ScrollViewer>
+              </Border>
+            </Popup>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+              <Setter TargetName="Bd" Property="BorderThickness" Value="1" />
+            </Trigger>
+            <Trigger Property="IsDropDownOpen" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+              <Setter TargetName="Bd" Property="BorderThickness" Value="1" />
+            </Trigger>
+            <Trigger Property="IsEditable" Value="True">
+              <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+              <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+              <Setter TargetName="ContentSite" Property="Opacity" Value="0.45" />
+              <Setter TargetName="PART_EditableTextBox" Property="Opacity" Value="0.45" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+</ResourceDictionary>

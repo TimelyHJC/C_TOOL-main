@@ -1,0 +1,25 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="Cad.Panel" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.Border" Color="#21262D" />
+  <SolidColorBrush x:Key="Cad.Muted" Color="#8B949E" />
+  <SolidColorBrush x:Key="Cad.Accent" Color="#58A6FF" />
+  <SolidColorBrush x:Key="Cad.RowAlt" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.HeaderBg" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.InputBg" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.GridBg" Color="#16191F" />
+  <SolidColorBrush x:Key="Cad.GridHeaderBg" Color="#1B1F28" />
+  <SolidColorBrush x:Key="Cad.GridRow" Color="#12141A" />
+  <SolidColorBrush x:Key="Cad.GridRowAlt" Color="#12141A" />
+  <SolidColorBrush x:Key="Cad.GridLine" Color="#252B36" />
+  <SolidColorBrush x:Key="Cad.GridRowHover" Color="#222731" />
+  <SolidColorBrush x:Key="Cad.ScrollTrack" Color="#10151C" />
+  <SolidColorBrush x:Key="Cad.ScrollThumb" Color="#3D4756" />
+  <SolidColorBrush x:Key="Cad.ScrollThumbHover" Color="#4E5A6A" />
+  <SolidColorBrush x:Key="Cad.ButtonPrimary" Color="#1E77B4" />
+  <SolidColorBrush x:Key="Cad.ToolbarBg" Color="#323B4A" />
+  <SolidColorBrush x:Key="Cad.StatusLine" Color="#30363D" />
+  <SolidColorBrush x:Key="Cad.TabIdle" Color="#262C38" />
+  <SolidColorBrush x:Key="Cad.TabHover" Color="#2C3340" />
+  <SolidColorBrush x:Key="Cad.TabSelected" Color="#262C38" />
+</ResourceDictionary>

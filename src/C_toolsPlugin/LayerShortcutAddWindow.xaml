@@ -1,0 +1,124 @@
+<Window x:Class="C_toolsPlugin.LayerShortcutAddWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="添加图层信息"
+        Style="{DynamicResource CadWidePageWindow}"
+        WindowStyle="SingleBorderWindow"
+        Width="860"
+        Height="232"
+        MinWidth="860"
+        MinHeight="232"
+        MaxWidth="860"
+        MaxHeight="232"
+        ResizeMode="NoResize"
+        ShowActivated="True"
+        WindowStartupLocation="CenterScreen">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/C_toolsShared;component/Themes/CadTheme.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+      <SolidColorBrush x:Key="Dialog.StatusError" Color="#FF7B5C" />
+
+      <Style x:Key="DialogFieldLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="#E6E8EA" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,6" />
+      </Style>
+
+      <Style x:Key="DialogHintText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Cad.Muted}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+      </Style>
+
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Border Style="{StaticResource CadWidePageFrame}"
+          BorderThickness="0"
+          CornerRadius="0">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <Border Grid.Row="0"
+              Background="{StaticResource Cad.Panel}">
+        <Grid Margin="18,14,18,10">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.1*" />
+            <ColumnDefinition Width="12" />
+            <ColumnDefinition Width="1.25*" />
+            <ColumnDefinition Width="12" />
+            <ColumnDefinition Width="110" />
+            <ColumnDefinition Width="12" />
+            <ColumnDefinition Width="1.5*" />
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0">
+            <TextBlock Style="{StaticResource DialogFieldLabel}"
+                       Text="图层快捷键" />
+            <TextBox x:Name="AliasTextBox"
+                     ToolTip="留空时只创建图层配置行，不会生成快捷命令。" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="2">
+            <TextBlock Style="{StaticResource DialogFieldLabel}"
+                       Text="图层名称" />
+            <TextBox x:Name="LayerNameTextBox" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="4">
+            <TextBlock Style="{StaticResource DialogFieldLabel}"
+                       Text="颜色(ACI)" />
+            <TextBox x:Name="ColorTextBox"
+                     ToolTip="可留空，或填写 ACI 1-255。" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="6">
+            <TextBlock Style="{StaticResource DialogFieldLabel}"
+                       Text="说明" />
+            <TextBox x:Name="DescriptionTextBox" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="1"
+              Style="{StaticResource CadWidePageStatusBar}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <TextBlock x:Name="StatusText"
+                     Grid.Column="0"
+                     Style="{StaticResource CadWidePageStatusText}"
+                     Margin="0,0,12,0"
+                     VerticalAlignment="Center"
+                     Text="图层名称必填；颜色可留空或填写 ACI 1-255。" />
+
+          <Button Grid.Column="1"
+                  Width="78"
+                  Margin="0,0,8,0"
+                  Click="CancelButton_Click"
+                  Content="取消"
+                  IsCancel="True" />
+
+          <Button Grid.Column="2"
+                  x:Name="ConfirmButton"
+                  Width="78"
+                  Click="ConfirmButton_Click"
+                  Content="添加"
+                  IsDefault="True"
+                  Style="{StaticResource PrimaryButton}" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

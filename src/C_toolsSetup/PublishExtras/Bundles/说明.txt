@@ -1,0 +1,26 @@
+插件仓库 — Bundles 文件夹
+========================
+
+可将多个 Autodesk 式插件包（*.bundle 目录）放在本文件夹内，也可再建子文件夹分类存放。
+
+安装程序 C_TOOL_Setup.exe 会扫描：
+  · EXE 所在目录（根层）的 *.bundle
+  · 本 Bundles 文件夹及其所有子文件夹中的 *.bundle
+
+发布时默认附带（与 EXE 同目录或 publish 根）：
+  · C_TOOL_2024.bundle  — AutoCAD 2024（.NET Framework，内含 C_TOOL / V_YYY / V_AAA / V_BBB / V_DDD / V_QQQ）
+
+当前架构说明：
+  · 对外只分发和安装 AutoCAD 2024 插件包
+  · 对内保留 6 个独立插件 DLL，但统一汇总进一个 2024 bundle
+  · bundle 会同时携带 C_toolsShared.dll、C_toolsJson.dll 等共享依赖
+  · 安装程序按整个 *.bundle 目录复制，请不要手动只拷贝主 DLL
+  · 如需人工检查发布目录，应确认 bundle 内依赖 DLL 一并存在
+
+若安装程序勾选“安装前自动构建当前源码”：
+  · 选择 AutoCAD 2024：只补构建 C_TOOL_2024.bundle
+
+仅使用 2024 的机器：携带 C_TOOL_2024.bundle。
+安装程序只会复制匹配 AutoCAD 2024 的 *.bundle 到安装根的 Plugin 目录。
+
+您可在此目录继续添加其它 .bundle，与 EXE 一并拷贝分发。

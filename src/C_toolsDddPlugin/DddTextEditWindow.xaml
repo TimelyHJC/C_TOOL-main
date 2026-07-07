@@ -1,0 +1,841 @@
+<Window x:Class="C_toolsDddPlugin.DddTextEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:local="clr-namespace:C_toolsDddPlugin"
+        xmlns:shared="clr-namespace:C_toolsShared;assembly=C_toolsShared"
+        Title="C_TOOL 文字快改"
+        Style="{DynamicResource CadWidePageWindow}"
+        WindowStyle="SingleBorderWindow"
+        Width="600"
+        Height="1080"
+        MinWidth="600"
+        MinHeight="1080"
+        MaxWidth="600"
+        MaxHeight="1080"
+        ResizeMode="NoResize"
+        ShowActivated="True"
+        WindowStartupLocation="CenterScreen"
+        Loaded="Window_Loaded">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/C_toolsShared;component/Themes/CadTheme.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+      <shared:DataGridRowIndexConverter x:Key="RowIndexConverter" />
+
+      <SolidColorBrush x:Key="Cad.StatusSuccess" Color="#9BCBFF" />
+      <SolidColorBrush x:Key="Cad.StatusError" Color="#FF7B5C" />
+
+      <Style x:Key="SectionTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="#DCE3EA" />
+      </Style>
+
+      <Style x:Key="SectionMetaText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Cad.Muted}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+      </Style>
+
+      <Style x:Key="MutedText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Cad.Muted}" />
+        <Setter Property="FontSize" Value="11" />
+      </Style>
+
+      <Style x:Key="SectionCard" TargetType="Border">
+        <Setter Property="Background" Value="#202632" />
+        <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="12" />
+      </Style>
+
+      <Style x:Key="CompactPrimaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+        <Setter Property="MinWidth" Value="72" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Padding" Value="14,0" />
+      </Style>
+
+      <Style x:Key="CompactSecondaryButton" TargetType="Button" BasedOn="{StaticResource CadBaseButton}">
+        <Setter Property="MinWidth" Value="72" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Padding" Value="14,0" />
+      </Style>
+
+      <Style x:Key="CadCheckBox" TargetType="CheckBox">
+        <Setter Property="Width" Value="22" />
+        <Setter Property="Height" Value="22" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="CheckBox">
+              <Grid Width="{TemplateBinding Width}" Height="{TemplateBinding Height}">
+                <Border x:Name="Box"
+                        Width="18"
+                        Height="18"
+                        Background="#1F2535"
+                        BorderBrush="#6C789A"
+                        BorderThickness="1.2"
+                        CornerRadius="4"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+                <Path x:Name="CheckMark"
+                      Data="M 4 9 L 7.5 12.5 L 14 6"
+                      Stroke="White"
+                      StrokeThickness="2"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      StrokeLineJoin="Round"
+                      Stretch="Fill"
+                      Width="10"
+                      Height="8"
+                      Visibility="Collapsed"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center" />
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+                </Trigger>
+                <Trigger Property="IsChecked" Value="True">
+                  <Setter TargetName="Box" Property="Background" Value="{StaticResource Cad.Accent}" />
+                  <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Cad.Accent}" />
+                  <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter TargetName="Box" Property="Opacity" Value="0.4" />
+                  <Setter TargetName="CheckMark" Property="Opacity" Value="0.4" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="HistoryIconButton" TargetType="Button" BasedOn="{StaticResource CadRoundedIconButton}">
+        <Setter Property="Width" Value="34" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="MinWidth" Value="34" />
+        <Setter Property="Padding" Value="0" />
+      </Style>
+
+      <Style x:Key="ListBoxBase" TargetType="ListBox">
+        <Style.Resources>
+          <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="0" />
+            <Setter Property="Height" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Focusable" Value="False" />
+          </Style>
+        </Style.Resources>
+        <Setter Property="Background" Value="{StaticResource Cad.GridBg}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="#E6E8EA" />
+      </Style>
+
+      <Style x:Key="ListBoxItemBase" TargetType="ListBoxItem">
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{StaticResource Cad.GridLine}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ListBoxItem">
+              <Border x:Name="Bd"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Bd" Property="Background" Value="{StaticResource Cad.GridRowHover}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                  <Setter TargetName="Bd" Property="Background" Value="#203247" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="HistoryListBoxItem" TargetType="ListBoxItem" BasedOn="{StaticResource ListBoxItemBase}">
+        <Setter Property="Padding" Value="10,7" />
+      </Style>
+
+      <Style x:Key="HistoryPrimaryText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="#E6E8EA" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="LineHeight" Value="18" />
+      </Style>
+
+      <Style x:Key="HistorySecondaryText" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Opacity" Value="0.88" />
+      </Style>
+
+      <Style x:Key="DgHeader" TargetType="DataGridColumnHeader">
+        <Setter Property="Foreground" Value="#E6E8EA" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="8,16" />
+        <Setter Property="MinHeight" Value="44" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="DataGridColumnHeader">
+              <Border x:Name="HeaderBorder"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      Background="{StaticResource Cad.GridHeaderBg}">
+                <ContentPresenter Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  SnapsToDevicePixels="True" />
+              </Border>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="DgHeaderFirstColumn" TargetType="DataGridColumnHeader" BasedOn="{StaticResource DgHeader}">
+        <Setter Property="Padding" Value="8,16" />
+      </Style>
+
+      <Style x:Key="DgHeaderIndexColumn" TargetType="DataGridColumnHeader" BasedOn="{StaticResource DgHeader}">
+        <Setter Property="Padding" Value="4,16" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+      </Style>
+
+      <Style x:Key="DgHeaderSpacerColumn" TargetType="DataGridColumnHeader" BasedOn="{StaticResource DgHeader}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      </Style>
+
+      <Style x:Key="CadDataGridCell" TargetType="DataGridCell">
+        <Setter Property="Foreground" Value="#E6E8EA" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="8,0" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FontSize" Value="13" />
+        <Style.Triggers>
+          <Trigger Property="IsSelected" Value="True">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#E6E8EA" />
+          </Trigger>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter Property="Background" Value="{StaticResource Cad.GridRowHover}" />
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+
+      <Style x:Key="CadDataGridCellIndexColumn" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCell}">
+        <Setter Property="Padding" Value="4,0,4,0" />
+        <Setter Property="Foreground" Value="Transparent" />
+      </Style>
+
+      <Style x:Key="CadDataGridCellSpacerColumn" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCell}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Foreground" Value="Transparent" />
+      </Style>
+
+      <Style x:Key="CadDataGridCellFirstColumn" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCell}">
+        <Setter Property="Padding" Value="8,0,8,0" />
+      </Style>
+
+      <Style x:Key="CadDgCellTextBlock" TargetType="TextBlock">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      </Style>
+
+      <Style x:Key="CadDgCellTextBox" TargetType="TextBox">
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+      </Style>
+
+      <Style x:Key="DddToolbarInputTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="MaxHeight" Value="32" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+      </Style>
+
+      <Style x:Key="DddGridCellTextBlock" TargetType="TextBlock" BasedOn="{StaticResource CadDgCellTextBlock}">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+      </Style>
+
+      <Style x:Key="DddGridCellTextBoxEdit" TargetType="TextBox" BasedOn="{StaticResource CadDgCellTextBox}">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="MinHeight" Value="28" />
+      </Style>
+
+      <Style x:Key="CadDataGridCellDdd" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCell}">
+        <Setter Property="Padding" Value="8,4" />
+      </Style>
+
+      <Style x:Key="CadDataGridCellFirstColumnDdd" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCellFirstColumn}">
+        <Setter Property="Padding" Value="8,4,8,4" />
+      </Style>
+
+      <Style x:Key="CadDataGridCellIndexColumnDdd" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCellIndexColumn}">
+        <Setter Property="Padding" Value="0,4,4,4" />
+      </Style>
+
+      <Style x:Key="CadDataGridCellActionColumnDdd" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCell}">
+        <Setter Property="Padding" Value="4,4,4,4" />
+      </Style>
+      <Style x:Key="CadDataGridCellListIconDdd" TargetType="DataGridCell" BasedOn="{StaticResource CadDataGridCellActionColumnDdd}">
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+      </Style>
+      <Style x:Key="DddListIconPath" TargetType="Path">
+        <Setter Property="Stroke" Value="{StaticResource Cad.Muted}" />
+        <Setter Property="StrokeThickness" Value="1.7" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+        <Setter Property="Fill" Value="{x:Null}" />
+      </Style>
+
+      <Style x:Key="CadDataGrid" TargetType="DataGrid">
+        <Style.Resources>
+          <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent" />
+          <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent" />
+          <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#E6E8EA" />
+          <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="0" />
+            <Setter Property="Height" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Focusable" Value="False" />
+          </Style>
+        </Style.Resources>
+        <Setter Property="RowHeight" Value="36" />
+        <Setter Property="Background" Value="{StaticResource Cad.GridBg}" />
+        <Setter Property="Foreground" Value="#E6E8EA" />
+        <Setter Property="BorderBrush" Value="{StaticResource Cad.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Cad.GridLine}" />
+        <Setter Property="VerticalGridLinesBrush" Value="Transparent" />
+        <Setter Property="RowBackground" Value="{StaticResource Cad.GridRow}" />
+        <Setter Property="AlternatingRowBackground" Value="{StaticResource Cad.GridRowAlt}" />
+        <Setter Property="ColumnHeaderStyle" Value="{StaticResource DgHeader}" />
+        <Setter Property="HeadersVisibility" Value="Column" />
+        <Setter Property="RowHeaderWidth" Value="0" />
+        <Setter Property="GridLinesVisibility" Value="Horizontal" />
+        <Setter Property="EnableRowVirtualization" Value="True" />
+        <Setter Property="EnableColumnVirtualization" Value="True" />
+        <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+        <Setter Property="ScrollViewer.PanningMode" Value="Both" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="DataGrid">
+              <Border Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      Padding="{TemplateBinding Padding}"
+                      CornerRadius="0"
+                      SnapsToDevicePixels="True">
+                <ScrollViewer x:Name="DG_ScrollViewer"
+                              Focusable="False"
+                              CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
+                              PanningMode="{TemplateBinding ScrollViewer.PanningMode}">
+                  <ScrollViewer.Template>
+                    <ControlTemplate TargetType="ScrollViewer">
+                      <Grid>
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="*" />
+                          <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Row="0"
+                                Grid.Column="0"
+                                Command="{x:Static DataGrid.SelectAllCommand}"
+                                Width="{Binding CellsPanelHorizontalOffset, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                Focusable="False"
+                                Style="{DynamicResource {ComponentResourceKey TypeInTargetAssembly={x:Type DataGrid}, ResourceId=DataGridSelectAllButtonStyle}}"
+                                Visibility="{Binding HeadersVisibility, RelativeSource={RelativeSource AncestorType=DataGrid}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, ConverterParameter={x:Static DataGridHeadersVisibility.All}}" />
+                        <DataGridColumnHeadersPresenter x:Name="PART_ColumnHeadersPresenter"
+                                                        Grid.Row="0"
+                                                        Grid.Column="1"
+                                                        Visibility="{Binding HeadersVisibility, RelativeSource={RelativeSource AncestorType=DataGrid}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, ConverterParameter={x:Static DataGridHeadersVisibility.Column}}" />
+                        <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                                Grid.Row="1"
+                                                Grid.Column="0"
+                                                Grid.ColumnSpan="2"
+                                                CanContentScroll="{TemplateBinding CanContentScroll}" />
+                        <ScrollBar x:Name="PART_VerticalScrollBar"
+                                   Grid.Row="1"
+                                   Grid.Column="2"
+                                   Orientation="Vertical"
+                                   Maximum="{TemplateBinding ScrollableHeight}"
+                                   ViewportSize="{TemplateBinding ViewportHeight}"
+                                   Value="{Binding VerticalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}"
+                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+                        <Grid Grid.Row="2"
+                              Grid.Column="1">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{Binding NonFrozenColumnsViewportHorizontalOffset, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                            <ColumnDefinition Width="*" />
+                          </Grid.ColumnDefinitions>
+                          <ScrollBar x:Name="PART_HorizontalScrollBar"
+                                     Grid.Column="1"
+                                     Orientation="Horizontal"
+                                     Maximum="{TemplateBinding ScrollableWidth}"
+                                     ViewportSize="{TemplateBinding ViewportWidth}"
+                                     Value="{Binding HorizontalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}"
+                                     Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" />
+                        </Grid>
+                      </Grid>
+                    </ControlTemplate>
+                  </ScrollViewer.Template>
+                  <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                </ScrollViewer>
+              </Border>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style TargetType="TabItem" BasedOn="{StaticResource CadHeaderTabItem}" />
+
+      <Style TargetType="TabControl" BasedOn="{StaticResource CadContentTabs}" />
+
+      <Style x:Key="DddTabControl" TargetType="TabControl" BasedOn="{StaticResource CadContentTabs}" />
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Border Style="{StaticResource CadWidePageFrame}"
+          BorderThickness="0"
+          CornerRadius="0">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <Border Grid.Row="0"
+              Background="{StaticResource Cad.Panel}">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+
+          <Border Grid.Row="0"
+                  Background="{StaticResource Cad.ToolbarBg}"
+                  BorderBrush="{StaticResource Cad.Border}"
+                  BorderThickness="0,0,0,1"
+                  Padding="18,14,18,14">
+            <StackPanel>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Style="{StaticResource SectionTitle}"
+                           VerticalAlignment="Center"
+                           Text="当前修改文字" />
+                <Button Grid.Column="2"
+                        Content="确认"
+                        IsDefault="True"
+                        Style="{StaticResource CompactPrimaryButton}"
+                        Click="ApplyInput_Click" />
+              </Grid>
+              <TextBox x:Name="TxtEditText"
+                       Margin="0,10,0,0"
+                       MinHeight="96"
+                       MaxHeight="152"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       VerticalScrollBarVisibility="Auto"
+                       HorizontalScrollBarVisibility="Disabled"
+                       ToolTip="可直接输入新文字，或从下方历史记录、共享列表带入后再写入图中。" />
+            </StackPanel>
+          </Border>
+
+          <Grid Grid.Row="1"
+                Margin="0,14,0,0">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+
+              <Grid x:Name="SharedListActionsPanel"
+                    Grid.Row="0"
+                    Margin="18,0,18,10"
+                    Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="8" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="8" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="8" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TxtListAddLabel"
+                           Grid.Column="0"
+                           VerticalAlignment="Center"
+                           Style="{StaticResource SectionMetaText}"
+                           Text="文字" />
+                <TextBox x:Name="TxtListAddText"
+                         Grid.Column="2"
+                         Style="{StaticResource DddToolbarInputTextBox}"
+                         KeyDown="TxtListAddText_KeyDown"
+                         ToolTip="{x:Static local:DddPanelUiStrings.ToolTipTxtAdd}" />
+                <Button x:Name="AddSharedListButton"
+                        Grid.Column="4"
+                        Style="{StaticResource CompactPrimaryButton}"
+                        Width="40"
+                        MinWidth="40"
+                        Padding="0"
+                        ToolTip="{x:Static local:DddPanelUiStrings.ToolTipTxtAdd}"
+                        Click="AddToSharedList_Click">
+                  <Button.Content>
+                    <ContentControl Style="{StaticResource CadAddIconControl}"
+                                    Width="15"
+                                    Height="15"
+                                    Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground, FallbackValue={StaticResource Cad.Muted}, TargetNullValue={StaticResource Cad.Muted}}" />
+                  </Button.Content>
+                </Button>
+                <Button x:Name="ClearSharedListButton"
+                        Grid.Column="6"
+                        Style="{StaticResource HistoryIconButton}"
+                        ToolTip="{x:Static local:DddPanelUiStrings.ToolTipClearList}"
+                        Click="ClearSharedList_Click">
+                  <ContentControl Style="{StaticResource CadTrashIconControl}"
+                                  Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground, FallbackValue={StaticResource Cad.Muted}, TargetNullValue={StaticResource Cad.Muted}}" />
+                </Button>
+              </Grid>
+
+              <TabControl Grid.Row="0"
+                          x:Name="ContentTabs"
+                          Style="{StaticResource DddTabControl}"
+                          Background="{StaticResource Cad.RowAlt}"
+                          BorderThickness="0"
+                          SelectionChanged="ContentTabs_SelectionChanged">
+                <TabItem Header="历史文字">
+                  <ListBox x:Name="ListHistory"
+                           Style="{StaticResource ListBoxBase}"
+                           ItemContainerStyle="{StaticResource HistoryListBoxItem}"
+                           SelectionChanged="ListHistory_SelectionChanged"
+                           MouseDoubleClick="ListHistory_MouseDoubleClick">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel>
+                          <TextBlock Text="{Binding DisplayText}"
+                                     Style="{StaticResource HistoryPrimaryText}"
+                                     TextWrapping="Wrap"
+                                     MaxHeight="36"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Margin="0,6,0,0"
+                                     Style="{StaticResource HistorySecondaryText}"
+                                     Text="{Binding UpdatedAtText}" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                </TabItem>
+
+                <TabItem Header="{x:Static local:DddPanelUiStrings.TabNameTextList}">
+                  <DataGrid x:Name="GridRemarks"
+                            Style="{StaticResource CadDataGrid}"
+                            BorderThickness="0"
+                            RowHeight="40"
+                            AutoGenerateColumns="False"
+                            CanUserAddRows="False"
+                            CanUserDeleteRows="False"
+                            IsReadOnly="True"
+                            SelectionMode="Extended"
+                            SelectionUnit="FullRow"
+                            PreviewMouseLeftButtonDown="GridSharedList_PreviewMouseLeftButtonDown"
+                            KeyDown="GridSharedList_KeyDown"
+                            MouseDoubleClick="GridSharedList_MouseDoubleClick">
+                    <DataGrid.Columns>
+                      <DataGridTemplateColumn Width="48" MinWidth="48" CanUserResize="False" HeaderStyle="{StaticResource DgHeaderIndexColumn}" CellStyle="{StaticResource CadDataGridCellActionColumnDdd}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text="选择" HorizontalAlignment="Center" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <CheckBox HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Style="{StaticResource CadCheckBox}"
+                                      IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Width="34" MinWidth="34" CanUserResize="False" CanUserSort="False" IsReadOnly="True" HeaderStyle="{StaticResource DgHeaderIndexColumn}" CellStyle="{StaticResource CadDataGridCellListIconDdd}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text="" Foreground="Transparent" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <Viewbox Width="16" Height="16" Stretch="Uniform">
+                              <Canvas Width="16" Height="16">
+                                <Path Style="{StaticResource DddListIconPath}" Data="M 4 2.5 H 10.5 L 13 5 V 13.5 H 4 Z" />
+                                <Path Style="{StaticResource DddListIconPath}" Data="M 6 7 H 11 M 6 10 H 10" />
+                              </Canvas>
+                            </Viewbox>
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTextColumn Header="文字内容" Width="*"
+                                          Binding="{Binding RemarkText, UpdateSourceTrigger=PropertyChanged}"
+                                          HeaderStyle="{StaticResource DgHeaderFirstColumn}"
+                                          CellStyle="{StaticResource CadDataGridCellFirstColumnDdd}"
+                                          ElementStyle="{StaticResource DddGridCellTextBlock}"
+                                          EditingElementStyle="{StaticResource DddGridCellTextBoxEdit}" />
+                      <DataGridTemplateColumn Width="18"
+                                              MinWidth="18"
+                                              CanUserResize="False"
+                                              CanUserSort="False"
+                                              IsReadOnly="True"
+                                              HeaderStyle="{StaticResource DgHeaderSpacerColumn}"
+                                              CellStyle="{StaticResource CadDataGridCellSpacerColumn}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text=""
+                                     Foreground="Transparent" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <Border Background="Transparent" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </TabItem>
+
+                <TabItem Header="{x:Static local:DddPanelUiStrings.TabNamePropList}">
+                  <DataGrid x:Name="GridProps"
+                            Style="{StaticResource CadDataGrid}"
+                            BorderThickness="0"
+                            RowHeight="40"
+                            AutoGenerateColumns="False"
+                            CanUserAddRows="False"
+                            CanUserDeleteRows="False"
+                            IsReadOnly="True"
+                            SelectionMode="Extended"
+                            SelectionUnit="FullRow"
+                            PreviewMouseLeftButtonDown="GridSharedList_PreviewMouseLeftButtonDown"
+                            KeyDown="GridSharedList_KeyDown"
+                            MouseDoubleClick="GridSharedList_MouseDoubleClick">
+                    <DataGrid.Columns>
+                      <DataGridTemplateColumn Width="48" MinWidth="48" CanUserResize="False" HeaderStyle="{StaticResource DgHeaderIndexColumn}" CellStyle="{StaticResource CadDataGridCellActionColumnDdd}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text="选择" HorizontalAlignment="Center" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <CheckBox HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Style="{StaticResource CadCheckBox}"
+                                      IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Width="34" MinWidth="34" CanUserResize="False" CanUserSort="False" IsReadOnly="True" HeaderStyle="{StaticResource DgHeaderIndexColumn}" CellStyle="{StaticResource CadDataGridCellListIconDdd}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text="" Foreground="Transparent" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <Viewbox Width="16" Height="16" Stretch="Uniform">
+                              <Canvas Width="16" Height="16">
+                                <Path Style="{StaticResource DddListIconPath}" Data="M 3 6.5 L 8 3 L 13 6.5 V 13 H 3 Z" />
+                                <Path Style="{StaticResource DddListIconPath}" Data="M 6 13 V 9 H 10 V 13" />
+                              </Canvas>
+                            </Viewbox>
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTextColumn Header="道具名称" Width="1.2*"
+                                          Binding="{Binding ItemName, UpdateSourceTrigger=PropertyChanged}"
+                                          HeaderStyle="{StaticResource DgHeader}"
+                                          CellStyle="{StaticResource CadDataGridCellDdd}"
+                                          ElementStyle="{StaticResource DddGridCellTextBlock}"
+                                          EditingElementStyle="{StaticResource DddGridCellTextBoxEdit}" />
+                      <DataGridTextColumn Header="价格" Width="1*"
+                                          Binding="{Binding Price, UpdateSourceTrigger=PropertyChanged}"
+                                          HeaderStyle="{StaticResource DgHeader}"
+                                          CellStyle="{StaticResource CadDataGridCellDdd}"
+                                          ElementStyle="{StaticResource DddGridCellTextBlock}"
+                                          EditingElementStyle="{StaticResource DddGridCellTextBoxEdit}" />
+                      <DataGridTextColumn Header="备注" Width="1*"
+                                          Binding="{Binding Note, UpdateSourceTrigger=PropertyChanged}"
+                                          HeaderStyle="{StaticResource DgHeader}"
+                                          CellStyle="{StaticResource CadDataGridCellDdd}"
+                                          ElementStyle="{StaticResource DddGridCellTextBlock}"
+                                          EditingElementStyle="{StaticResource DddGridCellTextBoxEdit}" />
+                      <DataGridTemplateColumn Width="18"
+                                              MinWidth="18"
+                                              CanUserResize="False"
+                                              CanUserSort="False"
+                                              IsReadOnly="True"
+                                              HeaderStyle="{StaticResource DgHeaderSpacerColumn}"
+                                              CellStyle="{StaticResource CadDataGridCellSpacerColumn}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text=""
+                                     Foreground="Transparent" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <Border Background="Transparent" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </TabItem>
+
+                <TabItem Header="{x:Static local:DddPanelUiStrings.TabNameMaterialList}">
+                  <DataGrid x:Name="GridMaterials"
+                            Style="{StaticResource CadDataGrid}"
+                            BorderThickness="0"
+                            RowHeight="40"
+                            AutoGenerateColumns="False"
+                            CanUserAddRows="False"
+                            CanUserDeleteRows="False"
+                            IsReadOnly="True"
+                            SelectionMode="Extended"
+                            SelectionUnit="FullRow"
+                            PreviewMouseLeftButtonDown="GridSharedList_PreviewMouseLeftButtonDown"
+                            KeyDown="GridSharedList_KeyDown"
+                            MouseDoubleClick="GridSharedList_MouseDoubleClick">
+                    <DataGrid.Columns>
+                      <DataGridTemplateColumn Width="48" MinWidth="48" CanUserResize="False" HeaderStyle="{StaticResource DgHeaderIndexColumn}" CellStyle="{StaticResource CadDataGridCellActionColumnDdd}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text="选择" HorizontalAlignment="Center" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <CheckBox HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Style="{StaticResource CadCheckBox}"
+                                      IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Width="34" MinWidth="34" CanUserResize="False" CanUserSort="False" IsReadOnly="True" HeaderStyle="{StaticResource DgHeaderIndexColumn}" CellStyle="{StaticResource CadDataGridCellListIconDdd}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text="" Foreground="Transparent" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <Viewbox Width="16" Height="16" Stretch="Uniform">
+                              <Canvas Width="16" Height="16">
+                                <Path Style="{StaticResource DddListIconPath}" Data="M 3 5 H 13 V 12.5 H 3 Z" />
+                                <Path Style="{StaticResource DddListIconPath}" Data="M 5 5 V 3.5 H 11 V 5 M 5.5 8 H 10.5" />
+                              </Canvas>
+                            </Viewbox>
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTextColumn Header="材料名称" Width="1.2*"
+                                          Binding="{Binding MaterialName, UpdateSourceTrigger=PropertyChanged}"
+                                          HeaderStyle="{StaticResource DgHeader}"
+                                          CellStyle="{StaticResource CadDataGridCellDdd}"
+                                          ElementStyle="{StaticResource DddGridCellTextBlock}"
+                                          EditingElementStyle="{StaticResource DddGridCellTextBoxEdit}" />
+                      <DataGridTextColumn Header="规格" Width="1*"
+                                          Binding="{Binding Specification, UpdateSourceTrigger=PropertyChanged}"
+                                          HeaderStyle="{StaticResource DgHeader}"
+                                          CellStyle="{StaticResource CadDataGridCellDdd}"
+                                          ElementStyle="{StaticResource DddGridCellTextBlock}"
+                                          EditingElementStyle="{StaticResource DddGridCellTextBoxEdit}" />
+                      <DataGridTextColumn Header="备注" Width="1*"
+                                          Binding="{Binding Note, UpdateSourceTrigger=PropertyChanged}"
+                                          HeaderStyle="{StaticResource DgHeader}"
+                                          CellStyle="{StaticResource CadDataGridCellDdd}"
+                                          ElementStyle="{StaticResource DddGridCellTextBlock}"
+                                          EditingElementStyle="{StaticResource DddGridCellTextBoxEdit}" />
+                      <DataGridTemplateColumn Width="18"
+                                              MinWidth="18"
+                                              CanUserResize="False"
+                                              CanUserSort="False"
+                                              IsReadOnly="True"
+                                              HeaderStyle="{StaticResource DgHeaderSpacerColumn}"
+                                              CellStyle="{StaticResource CadDataGridCellSpacerColumn}">
+                        <DataGridTemplateColumn.Header>
+                          <TextBlock Text=""
+                                     Foreground="Transparent" />
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <Border Background="Transparent" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </TabItem>
+              </TabControl>
+
+              <Button x:Name="BtnClearHistory"
+                      Grid.Row="0"
+                      Panel.ZIndex="2"
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Top"
+                      Margin="0,7,12,0"
+                      Style="{StaticResource HistoryIconButton}"
+                      ToolTip="清空历史"
+                      Click="ClearHistory_Click">
+                <ContentControl Style="{StaticResource CadTrashIconControl}"
+                                Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground, FallbackValue={StaticResource Cad.Muted}, TargetNullValue={StaticResource Cad.Muted}}" />
+              </Button>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <Border x:Name="StatusBar"
+              Grid.Row="1"
+              Style="{StaticResource CadWidePageStatusBar}"
+              Padding="12,10">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <TextBlock x:Name="StatusText"
+                     Grid.Column="0"
+                     Style="{StaticResource CadWidePageStatusText}"
+                     Margin="0,0,12,0"
+                     VerticalAlignment="Center"
+                     Text="可直接输入新文字，也可从下方列表带入后再写入图中。"
+                     TextWrapping="Wrap" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>C_toolsTemplatePlugin</RootNamespace>
+    <AssemblyName>C_toolsTemplatePlugin</AssemblyName>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(Acad2024InstallPath)\AcCoreMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(Acad2024InstallPath)\AcDbMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(Acad2024InstallPath)\AcMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\C_toolsShared\C_toolsShared.csproj"
+                      SetTargetFramework="TargetFramework=$(TargetFramework)"
+                      SkipGetTargetFrameworkProperties="true" />
+    <Using Include="C_toolsShared" />
+  </ItemGroup>
+</Project>

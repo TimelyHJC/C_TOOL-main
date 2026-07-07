@@ -1,0 +1,83 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>C_toolsPlugin</RootNamespace>
+    <Version>1.0.1</Version>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <AssemblyName>C_TOOL_NetFx</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="AdWindows">
+      <HintPath>$(Acad2024InstallPath)\AdWindows.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(Acad2024InstallPath)\AcCoreMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(Acad2024InstallPath)\AcDbMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(Acad2024InstallPath)\AcMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+    <PackageReference Include="PolySharp" Version="1.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\C_toolsShared\C_toolsShared.csproj"
+                      SetTargetFramework="TargetFramework=$(TargetFramework)"
+                      SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\C_toolsJson\C_toolsJson.csproj"
+                      SetTargetFramework="TargetFramework=$(TargetFramework)"
+                      SkipGetTargetFrameworkProperties="true" />
+    <Using Include="C_toolsShared" />
+    <Using Include="C_toolsJson" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>$(MSBuildThisFileDirectory)..\..\C_TOOL_2024.bundle\Contents\Win64\</OutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' != ''">
+    <IntermediateOutputPath>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
+    <AppendTargetFrameworkToIntermediateOutputPath>false</AppendTargetFrameworkToIntermediateOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="SysConfigRow.cs" />
+    <Compile Remove="CadSysConfigArg.cs" />
+    <Compile Remove="CadProfileArgImporter.cs" />
+    <Compile Remove="ArgProfileLastStore.cs" />
+    <Compile Remove="PrintSavePanel.xaml.cs" />
+    <Page Remove="PrintSavePanel.xaml" />
+    <Compile Remove="SysConfigBuiltInDefaults.cs" />
+    <Compile Remove="SysConfigUserStore.cs" />
+    <Compile Remove="CadSysVarTextConverter.cs" />
+    <Compile Remove="SysConfigPanelWindow.xaml.cs" />
+    <Page Remove="SysConfigPanelWindow.xaml" />
+    <Compile Remove="PathsInfoCatalog.cs" />
+    <Compile Remove="PathsInfoPanel.xaml.cs" />
+    <Page Remove="PathsInfoPanel.xaml" />
+  </ItemGroup>
+
+  <Target Name="RemoveLegacyMainPluginArtifacts" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <_LegacyMainPluginArtifacts Include="$(OutputPath)V_KKK_NetFx.dll" />
+      <_LegacyMainPluginArtifacts Include="$(OutputPath)V_KKK_NetFx.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_LegacyMainPluginArtifacts)" TreatErrorsAsWarnings="true" />
+  </Target>
+</Project>
