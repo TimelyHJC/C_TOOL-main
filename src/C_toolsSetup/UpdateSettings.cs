@@ -7,8 +7,9 @@ internal static class UpdateSettings
 {
     internal const string EnvironmentVariableName = "C_TOOL_UPDATE_MANIFEST_URL";
 
-    // 填入你的服务器地址后，安装器即可直接检查更新。
-    internal const string DefaultManifestUrl = "";
+    // 默认回落到 GitHub 最新正式版 release 的 latest.json；
+    // 如需内网或自建更新源，可继续通过环境变量或注册表覆盖。
+    internal const string DefaultManifestUrl = "https://github.com/TimelyHJC/C_TOOL-main/releases/latest/download/latest.json";
 
     internal static string? GetManifestUrl()
     {

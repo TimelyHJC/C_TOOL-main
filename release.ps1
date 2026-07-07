@@ -96,6 +96,60 @@ function Normalize-ProductVersion {
     return $normalized
 }
 
+function Resolve-GitHubRepositoryInfo {
+    param([AllowNull()][string]$RemoteUrl)
+
+    $value = if ($null -eq $RemoteUrl) { "" } else { $RemoteUrl.Trim() }
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $null
+    }
+
+    $patterns = @(
+        '^https://github\.com/(?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?/?$',
+        '^git@github\.com:(?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?$',
+        '^ssh://git@github\.com/(?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?/?$'
+    )
+
+    foreach ($pattern in $patterns) {
+        $match = [System.Text.RegularExpressions.Regex]::Match(
+            $value,
+            $pattern,
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if ($match.Success) {
+            return [pscustomobject]@{
+                Owner = $match.Groups["owner"].Value
+                Repo = $match.Groups["repo"].Value
+            }
+        }
+    }
+
+    return $null
+}
+
+function Get-DefaultGitHubReleaseBaseUrl {
+    param([Parameter(Mandatory = $true)][string]$ReleaseVersion)
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $script:ErrorActionPreference = "Continue"
+    try {
+        $remoteUrl = & git remote get-url origin 2>$null
+    }
+    finally {
+        $script:ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($remoteUrl)) {
+        throw "Unable to resolve origin remote URL. Pass -UpdateBaseUrl explicitly or configure origin to point at GitHub."
+    }
+
+    $repository = Resolve-GitHubRepositoryInfo -RemoteUrl $remoteUrl
+    if ($null -eq $repository) {
+        throw ("Origin remote is not a supported GitHub URL: {0}" -f $remoteUrl)
+    }
+
+    return ("https://github.com/{0}/{1}/releases/download/{2}" -f $repository.Owner, $repository.Repo, $ReleaseVersion)
+}
+
 function Join-UpdateAssetUrl {
     param(
         [AllowNull()][string]$BaseUrl,
@@ -181,6 +235,14 @@ $bundleZipPaths = @()
 $installerPath = Get-ArtifactPath "C_TOOL_Setup.exe"
 $updateManifestPath = Get-ArtifactPath "latest.json"
 $releaseAssetPaths = New-Object System.Collections.Generic.List[string]
+$updateManifestBaseUrl = $UpdateBaseUrl
+
+if (-not $SkipUpdateManifest -and
+    [string]::IsNullOrWhiteSpace($updateManifestBaseUrl) -and
+    -not $SkipGitHubRelease)
+{
+    $updateManifestBaseUrl = Get-DefaultGitHubReleaseBaseUrl -ReleaseVersion $Version
+}
 
 Write-Host ("Repository root: {0}" -f $repoRoot)
 Write-Host ("Configuration: {0}" -f $Configuration)
@@ -189,6 +251,16 @@ Write-Host ("Product version: {0}" -f $productVersion)
 Write-Host ("Prerelease: {0}" -f $(if ($Prerelease) { "yes" } else { "no" }))
 Write-Host ("Upload bundles to existing release: {0}" -f $(if ($UploadBundlesToExistingRelease) { "yes" } else { "no" }))
 Write-Host ("Update manifest: {0}" -f $(if ($SkipUpdateManifest) { "skip" } else { "generate" }))
+if (-not $SkipUpdateManifest) {
+    $baseUrlDisplay = if ([string]::IsNullOrWhiteSpace($updateManifestBaseUrl)) {
+        "(relative paths)"
+    }
+    else {
+        $updateManifestBaseUrl
+    }
+
+    Write-Host ("Update manifest base URL: {0}" -f $baseUrlDisplay)
+}
 
 Push-Location $repoRoot
 try {
@@ -276,7 +348,7 @@ try {
                 -BundleZipPath $bundleZipPaths[0] `
                 -InstallerPath $installerPath `
                 -OutputPath $updateManifestPath `
-                -BaseUrl $UpdateBaseUrl
+                -BaseUrl $updateManifestBaseUrl
             $releaseAssetPaths.Add($updateManifestPath)
         }
     }

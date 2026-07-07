@@ -125,3 +125,27 @@ setx C_TOOL_UPDATE_MANIFEST_URL "\\192.168.1.10\C_TOOL_Update\latest.json"
 ```powershell
 setx C_TOOL_UPDATE_MANIFEST_URL "D:\C_TOOL_Update\latest.json"
 ```
+
+## GitHub 在线更新
+
+当前仓库已经支持直接使用 GitHub Release 作为插件更新源：
+
+- 安装器默认会读取：
+  `https://github.com/TimelyHJC/C_TOOL-main/releases/latest/download/latest.json`
+- 环境变量 `C_TOOL_UPDATE_MANIFEST_URL` 和注册表
+  `HKCU\Software\C_TOOL\UpdateManifestUrl`
+  仍然可以覆盖默认地址，适合内网或自建更新源。
+
+推荐的 GitHub 发版方式：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\release.ps1 -Version v1.0.4
+```
+
+这会在创建 GitHub Release 时一并生成并上传 `latest.json`，其中的 `bundleZipUrl` / `setupUrl` 会自动写成当前仓库对应 release 资产的绝对地址，客户端可直接检查并安装更新。
+
+如果你只想生成局域网、共享目录或自定义服务器使用的清单，继续使用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\release.ps1 -Version v1.0.4 -SkipGitHubRelease -SkipTag
+```
