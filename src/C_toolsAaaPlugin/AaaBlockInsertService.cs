@@ -1,4 +1,5 @@
 using System.IO;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -68,6 +69,7 @@ internal static class AaaBlockInsertService
 
                     currentSpace.AppendEntity(blockReference);
                     transaction.AddNewlyCreatedDBObject(blockReference, true);
+                    ApplyDynamicPropertySnapshots(blockReference, insertionPlan.DynamicPropertySnapshots);
                     AppendAttributeReferences(blockReference, transaction, insertionPlan.AttributeSnapshots);
                 });
 
@@ -331,12 +333,16 @@ internal static class AaaBlockInsertService
                     candidateReference = blockReference;
                 }
 
-                if (candidateReference == null || candidateReference.BlockTableRecord.IsNull)
+                if (candidateReference == null)
+                    return null;
+
+                var sourceBlockRecordId = ResolvePreferredSourceBlockRecordId(candidateReference);
+                if (sourceBlockRecordId.IsNull)
                     return null;
 
                 if (!CadDatabaseScope.TryOpenAs<BlockTableRecord>(
                         transaction,
-                        candidateReference.BlockTableRecord,
+                        sourceBlockRecordId,
                         OpenMode.ForRead,
                         out var sourceBlockRecord) ||
                     sourceBlockRecord == null ||
@@ -356,9 +362,33 @@ internal static class AaaBlockInsertService
                         Rotation = candidateReference.Rotation,
                         Scale = candidateReference.ScaleFactors,
                         LayerName = (candidateReference.Layer ?? "").Trim(),
-                        AttributeSnapshots = ReadAttributeSnapshots(candidateReference, transaction)
+                        AttributeSnapshots = ReadAttributeSnapshots(candidateReference, transaction),
+                        DynamicPropertySnapshots = ReadDynamicPropertySnapshots(candidateReference)
                     };
             });
+    }
+
+    private static ObjectId ResolvePreferredSourceBlockRecordId(BlockReference blockReference)
+    {
+        try
+        {
+            if (blockReference.IsDynamicBlock &&
+                !blockReference.DynamicBlockTableRecord.IsNull &&
+                !blockReference.DynamicBlockTableRecord.IsInvalid())
+            {
+                return blockReference.DynamicBlockTableRecord;
+            }
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 读取动态图块定义失败", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 读取动态图块定义失败（无效操作）", ex);
+        }
+
+        return blockReference.BlockTableRecord;
     }
 
     private static void AppendAttributeReferences(
@@ -436,6 +466,213 @@ internal static class AaaBlockInsertService
         }
 
         return snapshots;
+    }
+
+    private static IReadOnlyList<DynamicPropertySnapshot> ReadDynamicPropertySnapshots(BlockReference blockReference)
+    {
+        try
+        {
+            if (!blockReference.IsDynamicBlock)
+                return Array.Empty<DynamicPropertySnapshot>();
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 读取动态图块参数失败", ex);
+            return Array.Empty<DynamicPropertySnapshot>();
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 读取动态图块参数失败（无效操作）", ex);
+            return Array.Empty<DynamicPropertySnapshot>();
+        }
+
+        var snapshots = new List<DynamicPropertySnapshot>();
+        try
+        {
+            foreach (DynamicBlockReferenceProperty property in blockReference.DynamicBlockReferencePropertyCollection)
+            {
+                var propertyName = (property.PropertyName ?? "").Trim();
+                if (propertyName.Length == 0 || property.ReadOnly)
+                    continue;
+
+                if (!TryCloneDynamicPropertyValue(property.Value, out var propertyValue))
+                    continue;
+
+                snapshots.Add(new DynamicPropertySnapshot
+                {
+                    Name = propertyName,
+                    Value = propertyValue
+                });
+            }
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 读取动态图块参数失败", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 读取动态图块参数失败（无效操作）", ex);
+        }
+
+        return snapshots;
+    }
+
+    private static bool TryCloneDynamicPropertyValue(object? value, out object? clonedValue)
+    {
+        clonedValue = null;
+        if (value == null)
+            return false;
+
+        if (value is string text)
+        {
+            clonedValue = text;
+            return true;
+        }
+
+        var valueType = value.GetType();
+        if (!valueType.IsValueType)
+            return false;
+
+        clonedValue = value;
+        return true;
+    }
+
+    private static void ApplyDynamicPropertySnapshots(
+        BlockReference blockReference,
+        IReadOnlyList<DynamicPropertySnapshot> dynamicPropertySnapshots)
+    {
+        if (dynamicPropertySnapshots == null || dynamicPropertySnapshots.Count == 0)
+            return;
+
+        try
+        {
+            if (!blockReference.IsDynamicBlock)
+                return;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 应用动态图块参数失败", ex);
+            return;
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 应用动态图块参数失败（无效操作）", ex);
+            return;
+        }
+
+        var remainingSnapshots = new List<DynamicPropertySnapshot>(dynamicPropertySnapshots);
+        try
+        {
+            foreach (DynamicBlockReferenceProperty property in blockReference.DynamicBlockReferencePropertyCollection)
+            {
+                if (property.ReadOnly)
+                    continue;
+
+                var snapshot = ResolveDynamicPropertySnapshot(property, remainingSnapshots);
+                if (snapshot == null)
+                    continue;
+
+                if (!TryApplyDynamicPropertySnapshot(property, snapshot))
+                    continue;
+
+                remainingSnapshots.Remove(snapshot);
+            }
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 应用动态图块参数失败", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 应用动态图块参数失败（无效操作）", ex);
+        }
+    }
+
+    private static DynamicPropertySnapshot? ResolveDynamicPropertySnapshot(
+        DynamicBlockReferenceProperty property,
+        List<DynamicPropertySnapshot> remainingSnapshots)
+    {
+        if (remainingSnapshots.Count == 0)
+            return null;
+
+        var propertyName = (property.PropertyName ?? "").Trim();
+        if (propertyName.Length > 0)
+        {
+            for (var index = 0; index < remainingSnapshots.Count; index++)
+            {
+                var snapshot = remainingSnapshots[index];
+                if (string.Equals(snapshot.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    return snapshot;
+            }
+        }
+
+        return remainingSnapshots[0];
+    }
+
+    private static bool TryApplyDynamicPropertySnapshot(
+        DynamicBlockReferenceProperty property,
+        DynamicPropertySnapshot snapshot)
+    {
+        if (snapshot.Value == null)
+            return false;
+
+        try
+        {
+            var currentValue = property.Value;
+            property.Value = ConvertDynamicPropertyValue(snapshot.Value, currentValue);
+            return true;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"V_AAA 应用动态图块参数失败（{snapshot.Name}）", ex);
+            return false;
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"V_AAA 应用动态图块参数失败（无效操作，{snapshot.Name}）", ex);
+            return false;
+        }
+        catch (FormatException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"V_AAA 应用动态图块参数失败（格式，{snapshot.Name}）", ex);
+            return false;
+        }
+        catch (OverflowException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"V_AAA 应用动态图块参数失败（溢出，{snapshot.Name}）", ex);
+            return false;
+        }
+    }
+
+    private static object ConvertDynamicPropertyValue(object value, object? currentValue)
+    {
+        if (value == null)
+            return "";
+
+        var targetType = currentValue?.GetType();
+        if (targetType == null || targetType == typeof(object))
+            return value;
+
+        var valueType = value.GetType();
+        if (targetType.IsAssignableFrom(valueType))
+            return value;
+
+        if (targetType.IsEnum)
+        {
+            var enumUnderlyingType = Enum.GetUnderlyingType(targetType);
+            var numericValue = value is IConvertible
+                ? Convert.ChangeType(value, enumUnderlyingType, CultureInfo.InvariantCulture)
+                : value;
+            return Enum.ToObject(targetType, numericValue!);
+        }
+
+        if (targetType == typeof(string))
+            return Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
+
+        if (value is IConvertible)
+            return Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture)!;
+
+        return value;
     }
 
     private static string? ResolveAttributeValue(
@@ -618,12 +855,19 @@ internal static class AaaBlockInsertService
         internal Scale3d Scale { get; set; } = new Scale3d(1d);
         internal string LayerName { get; set; } = "";
         internal IReadOnlyList<AttributeValueSnapshot> AttributeSnapshots { get; set; } = Array.Empty<AttributeValueSnapshot>();
+        internal IReadOnlyList<DynamicPropertySnapshot> DynamicPropertySnapshots { get; set; } = Array.Empty<DynamicPropertySnapshot>();
     }
 
     private sealed class AttributeValueSnapshot
     {
         internal string Tag { get; set; } = "";
         internal string TextValue { get; set; } = "";
+    }
+
+    private sealed class DynamicPropertySnapshot
+    {
+        internal string Name { get; set; } = "";
+        internal object? Value { get; set; }
     }
 }
 
