@@ -9,6 +9,7 @@ internal static class FeatureCommandCatalog
 {
     private static readonly CommandEntry[] s_entries =
     {
+        Visible(PluginCommandIds.FoldBreakSymbol, "识别矩形范围并生成折空符号；按 S 可设置转折比例和 ACI 颜色", C_toolsCommandIds.MainToolset.Main),
         VisibleRibbon(PluginCommandIds.Launcher, "打开面板", "打开 C_TOOL 集成面板，统一查看图层快捷键、插件命令、路径说明与命令目录"),
         Visible(PluginCommandIds.Layer, "LISP 图层别名将 USERS1 写入后调用本命令 → RunByAlias；手动执行无 USERS1 时仅提示用别名单独命令；可先选对象", C_toolsCommandIds.MainToolset.Main),
         Visible(PluginCommandIds.Hatch, "从 USERS2-5 读取图层、图案、比例、角度后启动 HATCH", C_toolsCommandIds.MainToolset.Main),
@@ -68,6 +69,7 @@ internal static class FeatureCommandCatalog
         VisibleRibbon(C_toolsCommandIds.Ddd.TextEditorFix, "修复编辑器", "辅助修复：将 MTEXTED 与 TEXTED 恢复为 AutoCAD 内置文字编辑器，处理“无法找到 SHELL 程序”", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.TextHistoryEdit, "文字快改", "文字工具：打开窄窗口，自动记录单行/多行文字历史，并将历史文字快速写回当前选中文字", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.TextToMText, "单转多", "文字工具：启动 AutoCAD 原生 TXT2MTXT，将单行文字转换为多行文字", C_toolsCommandIds.Ddd.Main),
+        VisibleRibbon(C_toolsCommandIds.Ddd.TextMatch, "匹配文字", "文字工具：选择来源文字或多重引线文字后，将目标文字/多重引线文字内容匹配为来源内容；支持预选目标", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.DimShift, "上下快调", "智能标注工具：选中线性/对齐标注、文字、引线或多重引线后，拖拽预览并快速调整位置", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.DimShiftHorizontal, "左右快调", "智能标注工具：选中线性/对齐标注、文字、引线或多重引线后，拖拽预览并左右快速调整位置", C_toolsCommandIds.Ddd.Main),
 

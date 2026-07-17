@@ -818,6 +818,7 @@ internal static class DddDimensionShiftService
                 doc,
                 dimensionIds,
                 context.CommandName,
+                preferCurrentPlacement: true,
                 out _,
                 out _,
                 out var syncError))

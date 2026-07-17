@@ -150,6 +150,15 @@ public class DddCommands
         DddTextToMTextService.Run(doc);
     }
 
+    [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.TextMatch, CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void F_AtMatchTextContent()
+    {
+        var doc = AcAp.DocumentManager.MdiActiveDocument;
+        if (doc == null)
+            return;
+        DddTextMatchService.Run(doc);
+    }
+
     [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.DimShift, CommandFlags.Modal | CommandFlags.UsePickSet)]
     public void F_DsShiftDimensionPosition()
     {

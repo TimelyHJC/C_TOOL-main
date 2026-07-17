@@ -50,6 +50,27 @@ public class WallFinishStandardSelectionBuilderTests
     }
 
     [TestMethod]
+    public void ComputeRecognizedFigureCenter_UsesClosedConcaveGuideCentroid()
+    {
+        using var guide = new WallFinishCommandService.GuideChainSelection(
+            ObjectId.Null,
+            CreatePolyline(
+                true,
+                new Point2d(0.0, 0.0),
+                new Point2d(100.0, 0.0),
+                new Point2d(100.0, 40.0),
+                new Point2d(40.0, 40.0),
+                new Point2d(40.0, 100.0),
+                new Point2d(0.0, 100.0)));
+
+        var center = WallFinishCommandService.StandardSelectionBuilder.ComputeRecognizedFigureCenter(new[] { guide });
+
+        Assert.AreEqual(38.75, center.X, 1e-9);
+        Assert.AreEqual(38.75, center.Y, 1e-9);
+        Assert.AreEqual(0.0, center.Z, 1e-9);
+    }
+
+    [TestMethod]
     public void CreatePolylineApproximationPoints_SplitsBulgeSegments()
     {
         using var polyline = new Polyline(2);
@@ -79,12 +100,16 @@ public class WallFinishStandardSelectionBuilderTests
     }
 
     private static Polyline CreatePolyline(params Point2d[] points)
+        => CreatePolyline(closed: false, points);
+
+    private static Polyline CreatePolyline(bool closed, params Point2d[] points)
     {
         var polyline = new Polyline(points.Length);
         polyline.Normal = Vector3d.ZAxis;
         for (var i = 0; i < points.Length; i++)
             polyline.AddVertexAt(i, points[i], 0, 0, 0);
 
+        polyline.Closed = closed;
         return polyline;
     }
 }

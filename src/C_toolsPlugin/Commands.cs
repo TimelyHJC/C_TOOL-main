@@ -348,6 +348,12 @@ public class Commands
         RectangleCenterAlignCommandService.Run();
     }
 
+    [CommandMethod(PluginCommandIds.CommandGroup, PluginCommandIds.FoldBreakSymbol, CommandFlags.Modal)]
+    public void CreateFoldBreakSymbol()
+    {
+        FoldBreakCommandService.Run();
+    }
+
     [CommandMethod(PluginCommandIds.CommandGroup, PluginCommandIds.SwitchToPaperSpace, CommandFlags.Modal)]
     public void SwitchToPaperSpace()
     {

@@ -554,8 +554,18 @@ public class MainForm : Form
         _lblInstallStatus.Text = $"{status} {_installProgressPercent}%";
     }
 
+    private void CloseAfterSuccessfulCompletion()
+    {
+        if (IsDisposed || Disposing)
+            return;
+
+        _allowCloseWhileInstalling = true;
+        Close();
+    }
+
     private async Task RunInstallAsync()
     {
+        var closeAfterSuccess = false;
         if (_cbbAcadVersion.Items.Count == 0 ||
             _cbbAcadVersion.SelectedItem is not AcadInstallationScanner.Choice choice)
         {
@@ -621,8 +631,6 @@ public class MainForm : Form
                         {
                             AppendLog(
                                 "已启动 AutoCAD 2024。若随后出现 Autodesk Licensing Manager / AdskLicensingAgent 报错，通常属于 Autodesk 启动或许可环境，与本次插件复制无关。");
-                            _allowCloseWhileInstalling = true;
-                            Close();
                         }
                         else
                         {
@@ -632,13 +640,11 @@ public class MainForm : Form
                                 Text,
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Warning);
-                            SetInstallProgress("安装完成。", 100);
                         }
                     }
-                    else
-                    {
-                        SetInstallProgress("安装完成。", 100);
-                    }
+
+                    SetInstallProgress("安装完成。", 100);
+                    closeAfterSuccess = true;
 
                     break;
                 case InstallExitCode.InvalidInput:
@@ -659,14 +665,23 @@ public class MainForm : Form
         }
         finally
         {
-            _allowCloseWhileInstalling = false;
             SetInstallUiBusy(false);
             RefreshAcadSelectionUi();
+
+            if (closeAfterSuccess)
+            {
+                CloseAfterSuccessfulCompletion();
+            }
+            else
+            {
+                _allowCloseWhileInstalling = false;
+            }
         }
     }
 
     private async Task RunUpdateAsync()
     {
+        var closeAfterSuccess = false;
         var manifestUrl = UpdateSettings.GetManifestUrl();
         if (string.IsNullOrWhiteSpace(manifestUrl))
         {
@@ -779,8 +794,6 @@ public class MainForm : Form
                         SetInstallProgress("正在启动 AutoCAD...", 98);
                         if (AcadLauncher.TryLaunch(choice.VersionKey, choice.ProductKey, out var launchErr))
                         {
-                            _allowCloseWhileInstalling = true;
-                            Close();
                         }
                         else
                         {
@@ -792,6 +805,9 @@ public class MainForm : Form
                                 MessageBoxIcon.Warning);
                         }
                     }
+
+                    SetInstallProgress("更新完成。", 100);
+                    closeAfterSuccess = true;
 
                     break;
                 case InstallExitCode.InvalidInput:
@@ -864,9 +880,17 @@ public class MainForm : Form
                 }
             }
 
-            _allowCloseWhileInstalling = false;
             SetInstallUiBusy(false);
             RefreshAcadSelectionUi();
+
+            if (closeAfterSuccess)
+            {
+                CloseAfterSuccessfulCompletion();
+            }
+            else
+            {
+                _allowCloseWhileInstalling = false;
+            }
         }
     }
 

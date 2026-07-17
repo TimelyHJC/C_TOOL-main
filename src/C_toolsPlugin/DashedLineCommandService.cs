@@ -33,6 +33,8 @@ internal static class DashedLineCommandService
                 return;
             }
 
+            ApplyLinetypeSystemVariables(settings, ed);
+
             var result = ToggleConfiguredStyle(doc, selectionSet!, settings);
             if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
             {
@@ -43,8 +45,8 @@ internal static class DashedLineCommandService
             if (result.ChangedCount == 0)
             {
                 var emptyParts = new List<string>();
-                if (result.AlreadyMatchedCount > 0)
-                    emptyParts.Add($"{result.AlreadyMatchedCount} 个对象已符合当前设置");
+                if (result.ResetCount > 0)
+                    emptyParts.Add($"已重置 {result.ResetCount} 个对象的线型和比例");
                 if (result.UnsupportedCount > 0)
                     emptyParts.Add($"跳过 {result.UnsupportedCount} 个非线/多段线对象");
                 if (result.LockedLayerCount > 0)
@@ -64,8 +66,8 @@ internal static class DashedLineCommandService
                 parts.Add($"已切换 {result.AppliedCount} 个对象");
             if (result.RestoredCount > 0)
                 parts.Add($"已恢复 {result.RestoredCount} 个对象");
-            if (result.AlreadyMatchedCount > 0)
-                parts.Add($"{result.AlreadyMatchedCount} 个已符合当前设置");
+            if (result.ResetCount > 0)
+                parts.Add($"已重置 {result.ResetCount} 个对象的线型和比例");
             if (result.UnsupportedCount > 0)
                 parts.Add($"跳过 {result.UnsupportedCount} 个非线/多段线");
             if (result.LockedLayerCount > 0)
@@ -159,6 +161,7 @@ internal static class DashedLineCommandService
 
             DashedLineSettingsStore.Save(window.SavedSettings);
             settings = window.SavedSettings;
+            ApplyLinetypeSystemVariables(settings, ed);
             ed.WriteMessage($"\nC_TOOL：线型设置已更新。{FormatSettingsSummary(settings)}。");
         }
         catch (ArgumentException ex)
@@ -284,7 +287,24 @@ internal static class DashedLineCommandService
     private static string FormatSettingsSummary(DashedLineSettingsDto settings)
     {
         var scaleText = settings.LinetypeScale.ToString("0.###", CultureInfo.InvariantCulture);
-        return $"线型 [{settings.LinetypeName}]，比例 [{scaleText}]，颜色 [{FormatColorSummary(settings)}]，图层 [{FormatLayerSummary(settings)}]";
+        var globalScaleText = settings.GlobalLinetypeScale.ToString("0.####", CultureInfo.InvariantCulture);
+        var paperSpaceText = settings.UsePaperSpaceUnitsForScaling ? "使用" : "不使用";
+        return $"线型 [{settings.LinetypeName}]，比例 [{scaleText}]，全局比例 [{globalScaleText}]，图纸空间单位 [{paperSpaceText}]，颜色 [{FormatColorSummary(settings)}]，图层 [{FormatLayerSummary(settings)}]";
+    }
+
+    private static void ApplyLinetypeSystemVariables(DashedLineSettingsDto settings, Editor ed)
+    {
+        var failures = new List<string>();
+        var psLtScaleValue = settings.UsePaperSpaceUnitsForScaling ? (short)1 : (short)0;
+
+        if (!CadSystemVariableService.TrySetValue(SystemVariableNames.PsLtScale, psLtScaleValue, out var psLtScaleError))
+            failures.Add($"{SystemVariableNames.PsLtScale}: {psLtScaleError}");
+
+        if (!CadSystemVariableService.TrySetValue(SystemVariableNames.LtScale, settings.GlobalLinetypeScale, out var ltScaleError))
+            failures.Add($"{SystemVariableNames.LtScale}: {ltScaleError}");
+
+        if (failures.Count > 0)
+            ed.WriteMessage("\nC_TOOL：线型系统变量设置失败：" + string.Join("；", failures));
     }
 
     private static string FormatColorSummary(DashedLineSettingsDto settings)
@@ -409,7 +429,7 @@ internal static class DashedLineCommandService
         {
             var appliedCount = 0;
             var restoredCount = 0;
-            var alreadyMatchedCount = 0;
+            var resetCount = 0;
             var unsupportedCount = 0;
             var lockedLayerCount = 0;
             var failedCount = 0;
@@ -492,7 +512,13 @@ internal static class DashedLineCommandService
 
                     if (matchesTarget)
                     {
-                        alreadyMatchedCount++;
+                        if (!entity.IsWriteEnabled)
+                            entity.UpgradeOpen();
+
+                        ResetLinetypeOverrides(entity);
+                        if (hasSnapshot)
+                            RemoveToggleSnapshot(tr, entity);
+                        resetCount++;
                         continue;
                     }
 
@@ -526,7 +552,7 @@ internal static class DashedLineCommandService
             return new ToggleResult(
                 appliedCount,
                 restoredCount,
-                alreadyMatchedCount,
+                resetCount,
                 unsupportedCount,
                 lockedLayerCount,
                 failedCount,
@@ -613,6 +639,12 @@ internal static class DashedLineCommandService
         ApplyColor(entity, settings);
         if (hasTargetLayer)
             entity.LayerId = targetLayerId;
+    }
+
+    private static void ResetLinetypeOverrides(Entity entity)
+    {
+        entity.Linetype = "ByLayer";
+        entity.LinetypeScale = 1.0;
     }
 
     private static void ApplyColor(Entity entity, DashedLineSettingsDto settings)
@@ -871,7 +903,7 @@ internal static class DashedLineCommandService
         internal ToggleResult(
             int appliedCount,
             int restoredCount,
-            int alreadyMatchedCount,
+            int resetCount,
             int unsupportedCount,
             int lockedLayerCount,
             int failedCount,
@@ -879,7 +911,7 @@ internal static class DashedLineCommandService
         {
             AppliedCount = appliedCount;
             RestoredCount = restoredCount;
-            AlreadyMatchedCount = alreadyMatchedCount;
+            ResetCount = resetCount;
             UnsupportedCount = unsupportedCount;
             LockedLayerCount = lockedLayerCount;
             FailedCount = failedCount;
@@ -890,9 +922,9 @@ internal static class DashedLineCommandService
 
         internal int RestoredCount { get; }
 
-        internal int ChangedCount => AppliedCount + RestoredCount;
+        internal int ChangedCount => AppliedCount + RestoredCount + ResetCount;
 
-        internal int AlreadyMatchedCount { get; }
+        internal int ResetCount { get; }
 
         internal int UnsupportedCount { get; }
 

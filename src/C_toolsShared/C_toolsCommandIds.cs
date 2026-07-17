@@ -69,6 +69,8 @@ public static class C_toolsCommandIds
         public const string TextIncrementCopy = "F_AD";
         /// <summary>矩形框内居中</summary>
         public const string RectangleCenterAlign = "F_ZZ";
+        /// <summary>折空符号</summary>
+        public const string FoldBreakSymbol = "F_DK";
         /// <summary>切换到布局空间</summary>
         public const string SwitchToPaperSpace = "F_AQ";
         /// <summary>原地镜像</summary>
@@ -181,6 +183,8 @@ public static class C_toolsCommandIds
         public const string TextHistoryEdit = "F_ED";
         /// <summary>文字转多行文字</summary>
         public const string TextToMText = "F_TTM";
+        /// <summary>匹配文字内容</summary>
+        public const string TextMatch = "F_AT";
         /// <summary>标注拖拽调整</summary>
         public const string DimShift = "F_DS";
         /// <summary>标注水平拖拽</summary>

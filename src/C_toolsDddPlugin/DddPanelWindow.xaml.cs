@@ -42,6 +42,7 @@ public partial class DddPanelWindow : Window, IModelessWindowPlacement, IModeles
         _initialInputText = string.IsNullOrWhiteSpace(initialInputText) ? null : initialInputText;
         _persistSuspended = true;
         InitializeComponent();
+        DddTextInputFocusHelper.Attach(this);
         SourceInitialized += (_, _) =>
         {
             ApplyFixedWindowSize();
@@ -206,25 +207,10 @@ public partial class DddPanelWindow : Window, IModelessWindowPlacement, IModeles
         }
     }
 
-    /// <summary>从 CAD 回到浮窗时刷新预选快照与引线样式下拉（与 CMLEADERSTYLE 一致）。</summary>
+    /// <summary>从 CAD 回到浮窗时刷新引线样式下拉（与 CMLEADERSTYLE 一致）。</summary>
     private void DddPanelWindow_Activated(object? sender, EventArgs e)
     {
         RefreshMLeaderStyles();
-        try
-        {
-            AcAp.DocumentManager.ExecuteInApplicationContext(
-                _ =>
-                {
-                    var d = AcAp.DocumentManager.MdiActiveDocument;
-                    if (d != null)
-                        DddDrawingSelectionSync.CaptureImpliedTextSelection(d);
-                },
-                null);
-        }
-        catch (Exception ex)
-        {
-            C_toolsDiagnostics.LogNonFatal("ExecuteInApplicationContext（浮窗激活刷新文字预选快照）", ex);
-        }
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -236,8 +222,7 @@ public partial class DddPanelWindow : Window, IModelessWindowPlacement, IModeles
             TxtAddText.Text = _initialInputText;
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            TxtAddText.Focus();
-            TxtAddText.SelectAll();
+            DddTextInputFocusHelper.FocusTextBox(this, TxtAddText, selectAll: true);
             DddInputLanguageHelper.SwitchToChineseForWindow(this, "切换 V_DDD 中文输入法");
         }), DispatcherPriority.Input);
     }
@@ -834,8 +819,11 @@ public partial class DddPanelWindow : Window, IModelessWindowPlacement, IModeles
                             if (pickedTexts.Count > 0)
                             {
                                 TxtAddText.Text = string.Join(Environment.NewLine, pickedTexts);
-                                TxtAddText.Focus();
-                                TxtAddText.CaretIndex = TxtAddText.Text.Length;
+                                DddTextInputFocusHelper.FocusTextBox(
+                                    this,
+                                    TxtAddText,
+                                    selectAll: false,
+                                    moveCaretToEnd: true);
                             }
 
                             SetStatus(statusText);
@@ -1063,8 +1051,9 @@ public partial class DddPanelWindow : Window, IModelessWindowPlacement, IModeles
     internal void EnsureShown()
     {
         ApplyFixedWindowSize();
+        ShowActivated = true;
         Show();
-        ShowActivated = false;
+        DddTextInputFocusHelper.FocusTextBox(this, TxtAddText, selectAll: false, moveCaretToEnd: true);
     }
 
     public void OnHostShowing()

@@ -49,6 +49,9 @@ internal static class DddPluginCommandIds
     /// <summary>DD 插件：启动 AutoCAD 原生 TXT2MTXT，把单行文字转换为多行文字。</summary>
     internal const string TextToMText = C_toolsCommandIds.Ddd.TextToMText;
 
+    /// <summary>DD 插件：选择来源文字后，将目标文字内容匹配为来源内容。</summary>
+    internal const string TextMatch = C_toolsCommandIds.Ddd.TextMatch;
+
     /// <summary>DD 插件：选取线性/对齐标注、文字、引线或多重引线后，拖拽预览并快速调整位置。</summary>
     internal const string DimShift = C_toolsCommandIds.Ddd.DimShift;
 

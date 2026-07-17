@@ -5,9 +5,10 @@ namespace C_toolsPlugin;
 
 internal static class DashedLineSettingsStore
 {
-    private const int FileVersion = 1;
+    private const int FileVersion = 2;
     private const string FileName = "ctool_dashed_line.json";
     private const double DefaultLinetypeScale = 1.0;
+    private const double DefaultGlobalLinetypeScale = 1.0;
     private const double MinLinetypeScale = 0.0001;
     private const double MaxLinetypeScale = 1000000.0;
 
@@ -41,12 +42,13 @@ internal static class DashedLineSettingsStore
             rethrowOnFailure: true);
     }
 
-    private static DashedLineSettingsDto Normalize(DashedLineSettingsDto? dto)
+    internal static DashedLineSettingsDto Normalize(DashedLineSettingsDto? dto)
     {
         dto ??= DefaultDto();
         dto.Version = FileVersion;
         dto.LinetypeName = NormalizeLinetypeName(dto.LinetypeName);
         dto.LinetypeScale = NormalizeLinetypeScale(dto.LinetypeScale);
+        dto.GlobalLinetypeScale = NormalizeLinetypeScale(dto.GlobalLinetypeScale, DefaultGlobalLinetypeScale);
         dto.ColorMode = NormalizeColorMode(dto.ColorMode);
         dto.ColorIndex = NormalizeColorIndex(dto.ColorMode, dto.ColorIndex);
         dto.TargetLayerName = (dto.TargetLayerName ?? "").Trim();
@@ -59,6 +61,8 @@ internal static class DashedLineSettingsStore
             Version = FileVersion,
             LinetypeName = LinetypeNames.Dashed,
             LinetypeScale = DefaultLinetypeScale,
+            UsePaperSpaceUnitsForScaling = false,
+            GlobalLinetypeScale = DefaultGlobalLinetypeScale,
             ColorMode = DashedLineColorModes.Keep,
             ColorIndex = null,
             TargetLayerName = ""
@@ -70,10 +74,13 @@ internal static class DashedLineSettingsStore
         return trimmed.Length == 0 ? LinetypeNames.Dashed : trimmed;
     }
 
-    private static double NormalizeLinetypeScale(double value)
+    private static double NormalizeLinetypeScale(double value) =>
+        NormalizeLinetypeScale(value, DefaultLinetypeScale);
+
+    private static double NormalizeLinetypeScale(double value, double fallback)
     {
         if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
-            return DefaultLinetypeScale;
+            return fallback;
 
         if (value < MinLinetypeScale)
             return MinLinetypeScale;

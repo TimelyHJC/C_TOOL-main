@@ -58,6 +58,41 @@ public class CommandAliasSaveTests
     }
 
     [TestMethod]
+    public void DuplicateChecker_IndexesAllMatchingCommandAliasesOnce()
+    {
+        var layerA = new CommandCatalogRow(
+            PluginCommandIds.LayerShortcutCatalogCommandLabel,
+            "",
+            "",
+            CadCommandCatalogBuilder.TagLayerShortcut)
+        {
+            Alias = "AA",
+            LayerName = "A-WALL"
+        };
+        var layerB = new CommandCatalogRow(
+            PluginCommandIds.LayerShortcutCatalogCommandLabel,
+            "",
+            "",
+            CadCommandCatalogBuilder.TagLayerShortcut)
+        {
+            Alias = "BB",
+            LayerName = "A-DOOR"
+        };
+        var command = new CommandCatalogRow("V_AAA", "", "", CadCommandCatalogBuilder.TagVCommand)
+        {
+            Alias = "AA, BB, CC"
+        };
+
+        var result = SaveDuplicateChecker.Analyze(new[] { layerA, layerB, command });
+
+        Assert.IsTrue(result.HasIssues);
+        StringAssert.Contains(result.DialogText, "AA");
+        StringAssert.Contains(result.DialogText, "BB");
+        StringAssert.Contains(result.DialogText, "V_AAA");
+        Assert.IsFalse(result.DialogText.Contains("「CC」为图层快捷键"));
+    }
+
+    [TestMethod]
     public void CommandSaveTokens_SkipDirectCommandSelfAlias()
     {
         var row = new CommandCatalogRow("KDR", "", "", CadCommandCatalogBuilder.TagPluginCommand);

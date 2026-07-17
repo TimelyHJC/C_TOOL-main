@@ -17,10 +17,10 @@ internal static class RectangleCenterAlignCommandService
 {
     private const string CommandName = PluginCommandIds.RectangleCenterAlign;
     private const double GeometryTolerance = 1e-6;
-    private const double RightAngleTolerance = 1e-3;
     private const double AxisAlignmentTolerance = 1e-4;
     private const double AxisMergeTolerance = 1e-4;
     private const double AxisDirectionTolerance = 1e-4;
+    private const int MaxAnalysisOrientationCount = 64;
 
     internal static void Run()
     {
@@ -41,7 +41,14 @@ internal static class RectangleCenterAlignCommandService
             var targetResolutionError = "";
             CadDatabaseScope.Read(doc, (_, tr) =>
             {
-                TryResolveTargets(tr, selectedIds, out targetIds, out targetExtents, out selectedFrames, out targetResolutionError);
+                TryResolveTargets(
+                    tr,
+                    selectedIds,
+                    analysisTransforms,
+                    out targetIds,
+                    out targetExtents,
+                    out selectedFrames,
+                    out targetResolutionError);
             });
 
             if (targetIds.Length == 0)
@@ -54,27 +61,25 @@ internal static class RectangleCenterAlignCommandService
             var frameSource = "";
             CadDatabaseScope.Read(doc, (db, tr) =>
             {
-                if (TryFindBestContainingFrame(selectedFrames, targetExtents, out frameInfo))
+                if (TryFindBestContainingFrame(selectedFrames, targetExtents, out var selectedFrameInfo))
                 {
-                    frameSource = "当前选择";
+                    UseBetterFrame(selectedFrameInfo, "当前选择", ref frameInfo, ref frameSource);
                 }
-                else if (TryFindBestContainingFrameInCurrentSpace(tr, db, targetIds, targetExtents, out frameInfo))
+
+                if (TryFindBestContainingFrameInCurrentSpace(tr, db, targetIds, targetExtents, out var entityFrameInfo))
                 {
-                    frameSource = "自动识别";
+                    UseBetterFrame(entityFrameInfo, "自动识别", ref frameInfo, ref frameSource);
                 }
-                else if (TryInferContainingFrameFromLineNetworkInCurrentSpace(
-                             tr,
-                             db,
-                             targetIds,
-                             targetExtents,
-                             analysisTransforms,
-                             out frameInfo))
+
+                if (TryInferContainingFrameFromLineNetworkInCurrentSpace(
+                        tr,
+                        db,
+                        targetIds,
+                        targetExtents,
+                        analysisTransforms,
+                        out var lineNetworkFrameInfo))
                 {
-                    frameSource = "自动识别";
-                }
-                else
-                {
-                    frameInfo = default;
+                    UseBetterFrame(lineNetworkFrameInfo, "自动识别", ref frameInfo, ref frameSource);
                 }
             });
 
@@ -185,6 +190,7 @@ internal static class RectangleCenterAlignCommandService
     private static bool TryResolveTargets(
         Transaction tr,
         ObjectId[] selectedIds,
+        IReadOnlyList<AnalysisTransform> analysisTransforms,
         out ObjectId[] targetIds,
         out Extents3d targetExtents,
         out List<RectangleFrameInfo> selectedFrames,
@@ -195,8 +201,9 @@ internal static class RectangleCenterAlignCommandService
         selectedFrames = new List<RectangleFrameInfo>();
         error = "";
 
-        var targetList = new List<ObjectId>(selectedIds.Length);
-        var hasTargetExtents = false;
+        var targetCandidates = new List<TargetCandidate>(selectedIds.Length);
+        var guideCandidateIds = new List<ObjectId>();
+        var hasDeferredGuideWithoutExtents = false;
 
         for (var index = 0; index < selectedIds.Length; index++)
         {
@@ -210,6 +217,10 @@ internal static class RectangleCenterAlignCommandService
                 continue;
             }
 
+            var canUseAsGuide = CanContributeLineNetworkGuide(tr, objectId);
+            if (canUseAsGuide)
+                guideCandidateIds.Add(objectId);
+
             if (!CadDatabaseScope.TryOpenAs<Entity>(tr, objectId, OpenMode.ForRead, out var entity) ||
                 entity == null)
             {
@@ -218,23 +229,40 @@ internal static class RectangleCenterAlignCommandService
 
             if (!TryGetEntityExtents(entity, out var extents))
             {
+                if (canUseAsGuide)
+                {
+                    hasDeferredGuideWithoutExtents = true;
+                    continue;
+                }
+
                 error = "所选对象中存在无法读取范围的实体，请重新选择。";
                 return false;
             }
 
-            targetList.Add(objectId);
-            if (!hasTargetExtents)
-            {
-                targetExtents = extents;
-                hasTargetExtents = true;
-            }
-            else
-            {
-                targetExtents.AddExtents(extents);
-            }
+            targetCandidates.Add(new TargetCandidate(objectId, extents));
         }
 
-        if (targetList.Count == 0)
+        if (selectedFrames.Count == 0 &&
+            TryResolveSelectedLineNetworkFrame(
+                tr,
+                guideCandidateIds,
+                targetCandidates,
+                analysisTransforms,
+                out targetIds,
+                out targetExtents,
+                out var selectedLineNetworkFrame))
+        {
+            selectedFrames.Add(selectedLineNetworkFrame);
+            return true;
+        }
+
+        if (hasDeferredGuideWithoutExtents && targetCandidates.Count == 0)
+        {
+            error = "未读取到可处理的对象。";
+            return false;
+        }
+
+        if (targetCandidates.Count == 0)
         {
             error = selectedFrames.Count > 0
                 ? "当前仅选中了矩形框，请同时选中需要居中的对象，或只选对象后让命令自动识别矩形框。"
@@ -242,7 +270,96 @@ internal static class RectangleCenterAlignCommandService
             return false;
         }
 
-        targetIds = targetList.ToArray();
+        return TryBuildTargetSet(targetCandidates, out targetIds, out targetExtents);
+    }
+
+    private static bool TryBuildTargetSet(
+        IReadOnlyList<TargetCandidate> candidates,
+        out ObjectId[] targetIds,
+        out Extents3d targetExtents)
+    {
+        targetIds = Array.Empty<ObjectId>();
+        targetExtents = default;
+        if (candidates.Count == 0)
+            return false;
+
+        var ids = new List<ObjectId>(candidates.Count);
+        for (var index = 0; index < candidates.Count; index++)
+        {
+            var candidate = candidates[index];
+            ids.Add(candidate.ObjectId);
+            if (index == 0)
+            {
+                targetExtents = candidate.Extents;
+                continue;
+            }
+
+            targetExtents.AddExtents(candidate.Extents);
+        }
+
+        targetIds = ids.ToArray();
+        return true;
+    }
+
+    private static bool CanContributeLineNetworkGuide(
+        Transaction tr,
+        ObjectId objectId)
+    {
+        var directions = new List<Vector3d>();
+        AppendGuideDirections(tr, objectId, directions);
+        return directions.Count > 0;
+    }
+
+    private static bool TryResolveSelectedLineNetworkFrame(
+        Transaction tr,
+        IReadOnlyList<ObjectId> guideCandidateIds,
+        IReadOnlyList<TargetCandidate> targetCandidates,
+        IReadOnlyList<AnalysisTransform> analysisTransforms,
+        out ObjectId[] targetIds,
+        out Extents3d targetExtents,
+        out RectangleFrameInfo frameInfo)
+    {
+        targetIds = Array.Empty<ObjectId>();
+        targetExtents = default;
+        frameInfo = default;
+        if (guideCandidateIds.Count == 0 || targetCandidates.Count == 0)
+            return false;
+
+        var guideIds = new HashSet<ObjectId>(guideCandidateIds);
+        var targetOnlyCandidates = targetCandidates
+            .Where(candidate => !guideIds.Contains(candidate.ObjectId))
+            .ToList();
+        if (!TryBuildTargetSet(targetOnlyCandidates, out var resolvedTargetIds, out var resolvedTargetExtents))
+            return false;
+
+        var bestFrame = default(RectangleFrameInfo);
+        var resolvedTransforms = BuildLineNetworkAnalysisTransforms(tr, guideCandidateIds, analysisTransforms);
+        for (var index = 0; index < resolvedTransforms.Count; index++)
+        {
+            var transform = resolvedTransforms[index];
+            var segments = new List<AxisAlignedSegment>();
+            for (var guideIndex = 0; guideIndex < guideCandidateIds.Count; guideIndex++)
+                AppendAxisAlignedSegments(tr, guideCandidateIds[guideIndex], transform.WorldToAnalysis, segments);
+
+            if (segments.Count == 0)
+                continue;
+
+            var analysisTargetExtents = TransformExtents(resolvedTargetExtents, transform.WorldToAnalysis);
+            if (!TryInferAxisAlignedRectangleBounds(analysisTargetExtents, segments, out var analysisExtents))
+                continue;
+
+            var candidate = RectangleFrameInfo.CreateInferred(
+                TransformExtents(analysisExtents, transform.AnalysisToWorld),
+                analysisExtents.Area2d());
+            UseBetterFrame(candidate, ref bestFrame);
+        }
+
+        if (!bestFrame.IsResolved)
+            return false;
+
+        targetIds = resolvedTargetIds;
+        targetExtents = resolvedTargetExtents;
+        frameInfo = bestFrame;
         return true;
     }
 
@@ -252,24 +369,43 @@ internal static class RectangleCenterAlignCommandService
         out RectangleFrameInfo frameInfo)
     {
         frameInfo = default;
-        var found = false;
-        var bestArea = double.MaxValue;
 
         for (var index = 0; index < candidates.Count; index++)
         {
             var candidate = candidates[index];
-            if (!ContainsExtents(candidate.Extents, targetExtents))
+            if (!ContainsTarget(candidate, targetExtents))
                 continue;
 
-            if (!found || candidate.Area < bestArea)
-            {
-                frameInfo = candidate;
-                bestArea = candidate.Area;
-                found = true;
-            }
+            UseBetterFrame(candidate, ref frameInfo);
         }
 
-        return found;
+        return frameInfo.IsResolved;
+    }
+
+    private static void UseBetterFrame(
+        RectangleFrameInfo candidate,
+        string source,
+        ref RectangleFrameInfo bestFrame,
+        ref string bestSource)
+    {
+        if (!UseBetterFrame(candidate, ref bestFrame))
+            return;
+
+        bestSource = source;
+    }
+
+    private static bool UseBetterFrame(
+        RectangleFrameInfo candidate,
+        ref RectangleFrameInfo bestFrame)
+    {
+        if (!candidate.IsResolved)
+            return false;
+
+        if (bestFrame.IsResolved && candidate.Area >= bestFrame.Area - GeometryTolerance)
+            return false;
+
+        bestFrame = candidate;
+        return true;
     }
 
     private static bool TryFindBestContainingFrameInCurrentSpace(
@@ -280,8 +416,6 @@ internal static class RectangleCenterAlignCommandService
         out RectangleFrameInfo frameInfo)
     {
         frameInfo = default;
-        var found = false;
-        var bestArea = double.MaxValue;
         var excluded = new HashSet<ObjectId>(targetIds);
 
         if (!CadDatabaseScope.TryOpenAs<BlockTableRecord>(tr, db.CurrentSpaceId, OpenMode.ForRead, out var currentSpace) ||
@@ -298,18 +432,13 @@ internal static class RectangleCenterAlignCommandService
             if (!TryGetRectangleFrameInfo(tr, entityId, out var candidate))
                 continue;
 
-            if (!ContainsExtents(candidate.Extents, targetExtents))
+            if (!ContainsTarget(candidate, targetExtents))
                 continue;
 
-            if (!found || candidate.Area < bestArea)
-            {
-                frameInfo = candidate;
-                bestArea = candidate.Area;
-                found = true;
-            }
+            UseBetterFrame(candidate, ref frameInfo);
         }
 
-        return found;
+        return frameInfo.IsResolved;
     }
 
     private static bool TryPromptRectangleFrame(
@@ -398,7 +527,7 @@ internal static class RectangleCenterAlignCommandService
                 continue;
 
             if (!TryGetRectangleFrameInfo(tr, entityId, out var candidate) ||
-                !ContainsPoint(candidate.Extents, pickPoint, AxisAlignmentTolerance))
+                !ContainsFramePoint(candidate, pickPoint, AxisAlignmentTolerance))
             {
                 continue;
             }
@@ -423,11 +552,10 @@ internal static class RectangleCenterAlignCommandService
         out RectangleFrameInfo frameInfo)
     {
         frameInfo = default;
-        var found = false;
-        var bestArea = double.MaxValue;
-        for (var index = 0; index < analysisTransforms.Count; index++)
+        var resolvedTransforms = BuildLineNetworkAnalysisTransforms(tr, db, targetIds, analysisTransforms);
+        for (var index = 0; index < resolvedTransforms.Count; index++)
         {
-            var transform = analysisTransforms[index];
+            var transform = resolvedTransforms[index];
             if (!TryCollectAxisAlignedSegmentsInCurrentSpace(tr, db, targetIds, transform.WorldToAnalysis, out var segments) ||
                 segments.Count == 0)
             {
@@ -441,15 +569,11 @@ internal static class RectangleCenterAlignCommandService
             var candidate = RectangleFrameInfo.CreateInferred(
                 TransformExtents(analysisExtents, transform.AnalysisToWorld),
                 analysisExtents.Area2d());
-            if (found && candidate.Area >= bestArea - GeometryTolerance)
-                continue;
 
-            frameInfo = candidate;
-            bestArea = candidate.Area;
-            found = true;
+            UseBetterFrame(candidate, ref frameInfo);
         }
 
-        return found;
+        return frameInfo.IsResolved;
     }
 
     private static bool TryMoveTargets(
@@ -506,11 +630,10 @@ internal static class RectangleCenterAlignCommandService
         out RectangleFrameInfo frameInfo)
     {
         frameInfo = default;
-        var found = false;
-        var bestArea = double.MaxValue;
-        for (var index = 0; index < analysisTransforms.Count; index++)
+        var resolvedTransforms = BuildLineNetworkAnalysisTransforms(tr, db, targetIds, analysisTransforms);
+        for (var index = 0; index < resolvedTransforms.Count; index++)
         {
-            var transform = analysisTransforms[index];
+            var transform = resolvedTransforms[index];
             if (!TryCollectAxisAlignedSegmentsInCurrentSpace(tr, db, targetIds, transform.WorldToAnalysis, out var segments) ||
                 segments.Count == 0)
             {
@@ -524,15 +647,11 @@ internal static class RectangleCenterAlignCommandService
             var candidate = RectangleFrameInfo.CreateInferred(
                 TransformExtents(analysisExtents, transform.AnalysisToWorld),
                 analysisExtents.Area2d());
-            if (found && candidate.Area >= bestArea - GeometryTolerance)
-                continue;
 
-            frameInfo = candidate;
-            bestArea = candidate.Area;
-            found = true;
+            UseBetterFrame(candidate, ref frameInfo);
         }
 
-        return found;
+        return frameInfo.IsResolved;
     }
 
     private static bool TryGetTargetExtents(
@@ -610,6 +729,133 @@ internal static class RectangleCenterAlignCommandService
         return true;
     }
 
+    private static List<AnalysisTransform> BuildLineNetworkAnalysisTransforms(
+        Transaction tr,
+        Database db,
+        ObjectId[] excludedIds,
+        IReadOnlyList<AnalysisTransform> baseTransforms)
+    {
+        var directions = new List<Vector3d>();
+        var excluded = new HashSet<ObjectId>(excludedIds);
+
+        if (CadDatabaseScope.TryOpenAs<BlockTableRecord>(tr, db.CurrentSpaceId, OpenMode.ForRead, out var currentSpace) &&
+            currentSpace != null)
+        {
+            foreach (ObjectId entityId in currentSpace)
+            {
+                if (entityId.IsNull || excluded.Contains(entityId))
+                    continue;
+
+                AppendGuideDirections(tr, entityId, directions);
+            }
+        }
+
+        return BuildLineNetworkAnalysisTransforms(baseTransforms, directions);
+    }
+
+    private static List<AnalysisTransform> BuildLineNetworkAnalysisTransforms(
+        Transaction tr,
+        IReadOnlyList<ObjectId> guideIds,
+        IReadOnlyList<AnalysisTransform> baseTransforms)
+    {
+        var directions = new List<Vector3d>();
+        for (var index = 0; index < guideIds.Count; index++)
+        {
+            if (!guideIds[index].IsNull)
+                AppendGuideDirections(tr, guideIds[index], directions);
+        }
+
+        return BuildLineNetworkAnalysisTransforms(baseTransforms, directions);
+    }
+
+    private static List<AnalysisTransform> BuildLineNetworkAnalysisTransforms(
+        IReadOnlyList<AnalysisTransform> baseTransforms,
+        IReadOnlyList<Vector3d> directions)
+    {
+        var transforms = new List<AnalysisTransform>(baseTransforms);
+        var signatures = new List<double>();
+
+        for (var index = 0; index < directions.Count; index++)
+        {
+            if (transforms.Count >= MaxAnalysisOrientationCount)
+                break;
+
+            if (!TryGetDirectionSignature(directions[index], out var signature) ||
+                HasEquivalentDirectionSignature(signatures, signature) ||
+                !TryCreateAnalysisTransformFromDirection(directions[index], out var transform))
+            {
+                continue;
+            }
+
+            signatures.Add(signature);
+            transforms.Add(transform);
+        }
+
+        return transforms;
+    }
+
+    private static bool TryCreateAnalysisTransformFromDirection(
+        Vector3d direction,
+        out AnalysisTransform transform)
+    {
+        transform = default;
+        var length = Math.Sqrt((direction.X * direction.X) + (direction.Y * direction.Y));
+        if (length <= GeometryTolerance)
+            return false;
+
+        var xAxis = new Vector3d(direction.X / length, direction.Y / length, 0.0);
+        if (xAxis.X < -GeometryTolerance ||
+            (Math.Abs(xAxis.X) <= GeometryTolerance && xAxis.Y < 0.0))
+        {
+            xAxis = xAxis * -1.0;
+        }
+
+        var yAxis = new Vector3d(-xAxis.Y, xAxis.X, 0.0);
+        var analysisToWorld = Matrix3d.AlignCoordinateSystem(
+            Point3d.Origin,
+            Vector3d.XAxis,
+            Vector3d.YAxis,
+            Vector3d.ZAxis,
+            Point3d.Origin,
+            xAxis,
+            yAxis,
+            Vector3d.ZAxis);
+        transform = new AnalysisTransform(analysisToWorld.Inverse(), analysisToWorld);
+        return true;
+    }
+
+    private static bool TryGetDirectionSignature(Vector3d direction, out double signature)
+    {
+        signature = 0.0;
+        var length = Math.Sqrt((direction.X * direction.X) + (direction.Y * direction.Y));
+        if (length <= GeometryTolerance)
+            return false;
+
+        var angle = Math.Atan2(direction.Y / length, direction.X / length);
+        if (angle < 0.0)
+            angle += Math.PI;
+
+        var halfPi = Math.PI * 0.5;
+        while (angle >= halfPi)
+            angle -= halfPi;
+
+        signature = angle;
+        return true;
+    }
+
+    private static bool HasEquivalentDirectionSignature(IReadOnlyList<double> signatures, double signature)
+    {
+        for (var index = 0; index < signatures.Count; index++)
+        {
+            var delta = Math.Abs(signatures[index] - signature);
+            delta = Math.Min(delta, (Math.PI * 0.5) - delta);
+            if (delta <= AxisDirectionTolerance)
+                return true;
+        }
+
+        return false;
+    }
+
     private static void AppendAxisAlignedSegments(
         Transaction tr,
         ObjectId entityId,
@@ -646,6 +892,129 @@ internal static class RectangleCenterAlignCommandService
                 AppendPolyline3dAxisAlignedSegments(tr, polyline3d, worldToAnalysis, segments);
                 break;
         }
+    }
+
+    private static void AppendGuideDirections(
+        Transaction tr,
+        ObjectId entityId,
+        List<Vector3d> directions)
+    {
+        if (!CadDatabaseScope.TryOpenAs<Entity>(tr, entityId, OpenMode.ForRead, out var entity) ||
+            entity == null)
+        {
+            return;
+        }
+
+        switch (entity)
+        {
+            case Line line:
+                TryAppendGuideDirection(directions, line.EndPoint - line.StartPoint);
+                break;
+            case Xline xline:
+                TryAppendGuideDirection(directions, xline.UnitDir);
+                break;
+            case Ray ray:
+                TryAppendGuideDirection(directions, ray.UnitDir);
+                break;
+            case Polyline polyline:
+                AppendPolylineGuideDirections(polyline, directions);
+                break;
+            case Polyline2d polyline2d:
+                AppendPolyline2dGuideDirections(tr, polyline2d, directions);
+                break;
+            case Polyline3d polyline3d:
+                AppendPolyline3dGuideDirections(tr, polyline3d, directions);
+                break;
+        }
+    }
+
+    private static void AppendPolylineGuideDirections(
+        Polyline polyline,
+        List<Vector3d> directions)
+    {
+        if (polyline.NumberOfVertices < 2)
+            return;
+
+        var segmentCount = polyline.Closed ? polyline.NumberOfVertices : polyline.NumberOfVertices - 1;
+        for (var index = 0; index < segmentCount; index++)
+        {
+            if (Math.Abs(polyline.GetBulgeAt(index)) > GeometryTolerance)
+                continue;
+
+            var nextIndex = (index + 1) % polyline.NumberOfVertices;
+            TryAppendGuideDirection(
+                directions,
+                polyline.GetPoint3dAt(nextIndex) - polyline.GetPoint3dAt(index));
+        }
+    }
+
+    private static void AppendPolyline2dGuideDirections(
+        Transaction tr,
+        Polyline2d polyline2d,
+        List<Vector3d> directions)
+    {
+        var vertices = new List<(Point3d Point, double Bulge)>();
+        foreach (ObjectId vertexId in polyline2d)
+        {
+            if (!CadDatabaseScope.TryOpenAs<Vertex2d>(tr, vertexId, OpenMode.ForRead, out var vertex) ||
+                vertex == null)
+            {
+                return;
+            }
+
+            vertices.Add((vertex.Position, vertex.Bulge));
+        }
+
+        if (vertices.Count < 2)
+            return;
+
+        var segmentCount = polyline2d.Closed ? vertices.Count : vertices.Count - 1;
+        for (var index = 0; index < segmentCount; index++)
+        {
+            if (Math.Abs(vertices[index].Bulge) > GeometryTolerance)
+                continue;
+
+            var nextIndex = (index + 1) % vertices.Count;
+            TryAppendGuideDirection(directions, vertices[nextIndex].Point - vertices[index].Point);
+        }
+    }
+
+    private static void AppendPolyline3dGuideDirections(
+        Transaction tr,
+        Polyline3d polyline3d,
+        List<Vector3d> directions)
+    {
+        var vertices = new List<Point3d>();
+        foreach (ObjectId vertexId in polyline3d)
+        {
+            if (!CadDatabaseScope.TryOpenAs<PolylineVertex3d>(tr, vertexId, OpenMode.ForRead, out var vertex) ||
+                vertex == null)
+            {
+                return;
+            }
+
+            vertices.Add(vertex.Position);
+        }
+
+        if (vertices.Count < 2)
+            return;
+
+        var segmentCount = polyline3d.Closed ? vertices.Count : vertices.Count - 1;
+        for (var index = 0; index < segmentCount; index++)
+        {
+            var nextIndex = (index + 1) % vertices.Count;
+            TryAppendGuideDirection(directions, vertices[nextIndex] - vertices[index]);
+        }
+    }
+
+    private static void TryAppendGuideDirection(
+        List<Vector3d> directions,
+        Vector3d direction)
+    {
+        if (((direction.X * direction.X) + (direction.Y * direction.Y)) <= GeometryTolerance * GeometryTolerance)
+            return;
+
+        directions.Add(direction);
     }
 
     private static void AppendPolylineAxisAlignedSegments(
@@ -852,17 +1221,11 @@ internal static class RectangleCenterAlignCommandService
     private static bool TryCreatePolylineFrameInfo(ObjectId objectId, Polyline polyline, out RectangleFrameInfo frameInfo)
     {
         frameInfo = default;
-        if (!polyline.Closed || polyline.NumberOfVertices != 4)
+        if (!polyline.Closed || polyline.NumberOfVertices < 3)
             return false;
 
-        var points = new Point3d[4];
-        for (var index = 0; index < 4; index++)
-        {
-            if (Math.Abs(polyline.GetBulgeAt(index)) > GeometryTolerance)
-                return false;
-
-            points[index] = polyline.GetPoint3dAt(index);
-        }
+        if (!TryCollectPolylineBoundaryPoints(polyline, out var points))
+            return false;
 
         return TryCreateFrameInfo(objectId, polyline, points, out frameInfo);
     }
@@ -893,10 +1256,58 @@ internal static class RectangleCenterAlignCommandService
         return TryCreateFrameInfo(objectId, polyline3d, points, out frameInfo);
     }
 
+    private static bool TryCollectPolylineBoundaryPoints(Polyline polyline, out Point3d[] points)
+    {
+        points = Array.Empty<Point3d>();
+        if (polyline.NumberOfVertices < 3)
+            return false;
+
+        var list = new List<Point3d>();
+        var segmentCount = polyline.Closed ? polyline.NumberOfVertices : polyline.NumberOfVertices - 1;
+        for (var index = 0; index < segmentCount; index++)
+        {
+            var nextIndex = (index + 1) % polyline.NumberOfVertices;
+            AddPointIfDistinct(list, polyline.GetPoint3dAt(index));
+
+            var bulge = polyline.GetBulgeAt(index);
+            if (Math.Abs(bulge) <= GeometryTolerance)
+            {
+                AddPointIfDistinct(list, polyline.GetPoint3dAt(nextIndex));
+                continue;
+            }
+
+            var divisions = ResolveBulgeSegmentCount(Math.Abs(4.0 * Math.Atan(bulge)));
+            for (var step = 1; step <= divisions; step++)
+            {
+                try
+                {
+                    AddPointIfDistinct(list, polyline.GetPointAtParameter(index + (step / (double)divisions)));
+                }
+                catch (InvalidOperationException)
+                {
+                    AddPointIfDistinct(list, polyline.GetPoint3dAt(nextIndex));
+                    break;
+                }
+                catch (AcadRuntimeException)
+                {
+                    AddPointIfDistinct(list, polyline.GetPoint3dAt(nextIndex));
+                    break;
+                }
+            }
+        }
+
+        RemoveDuplicateClosingPoint(list);
+        if (list.Count < 3)
+            return false;
+
+        points = list.ToArray();
+        return true;
+    }
+
     private static bool TryCollectPolyline2dVertices(Transaction tr, Polyline2d polyline2d, out Point3d[] points)
     {
         points = Array.Empty<Point3d>();
-        var list = new List<Point3d>(4);
+        var list = new List<Point3d>();
 
         foreach (ObjectId vertexId in polyline2d)
         {
@@ -909,12 +1320,11 @@ internal static class RectangleCenterAlignCommandService
             if (Math.Abs(vertex.Bulge) > GeometryTolerance)
                 return false;
 
-            list.Add(vertex.Position);
-            if (list.Count > 4)
-                return false;
+            AddPointIfDistinct(list, vertex.Position);
         }
 
-        if (list.Count != 4)
+        RemoveDuplicateClosingPoint(list);
+        if (list.Count < 3)
             return false;
 
         points = list.ToArray();
@@ -924,7 +1334,7 @@ internal static class RectangleCenterAlignCommandService
     private static bool TryCollectPolyline3dVertices(Transaction tr, Polyline3d polyline3d, out Point3d[] points)
     {
         points = Array.Empty<Point3d>();
-        var list = new List<Point3d>(4);
+        var list = new List<Point3d>();
 
         foreach (ObjectId vertexId in polyline3d)
         {
@@ -934,12 +1344,11 @@ internal static class RectangleCenterAlignCommandService
                 return false;
             }
 
-            list.Add(vertex.Position);
-            if (list.Count > 4)
-                return false;
+            AddPointIfDistinct(list, vertex.Position);
         }
 
-        if (list.Count != 4)
+        RemoveDuplicateClosingPoint(list);
+        if (list.Count < 3)
             return false;
 
         points = list.ToArray();
@@ -953,14 +1362,54 @@ internal static class RectangleCenterAlignCommandService
         out RectangleFrameInfo frameInfo)
     {
         frameInfo = default;
-        if (!TryGetRectangleArea(points, out var area) || !TryGetEntityExtents(entity, out var extents))
+        if (!PlanarPolygonGeometry.TryComputeCentroid(points, out var center, out var area, GeometryTolerance) ||
+            !TryGetEntityExtents(entity, out var extents))
+        {
             return false;
+        }
 
-        frameInfo = RectangleFrameInfo.CreateEntityBacked(objectId, extents, area);
+        frameInfo = RectangleFrameInfo.CreateEntityBacked(objectId, center, extents, area, points);
         return true;
     }
 
+    private static void AddPointIfDistinct(List<Point3d> points, Point3d point)
+    {
+        if (points.Count > 0 && points[^1].DistanceTo(point) <= GeometryTolerance)
+            return;
+
+        points.Add(point);
+    }
+
+    private static void RemoveDuplicateClosingPoint(List<Point3d> points)
+    {
+        if (points.Count > 1 && points[0].DistanceTo(points[^1]) <= GeometryTolerance)
+            points.RemoveAt(points.Count - 1);
+    }
+
+    private static int ResolveBulgeSegmentCount(double includedAngle)
+    {
+        if (double.IsNaN(includedAngle) || double.IsInfinity(includedAngle) || includedAngle <= GeometryTolerance)
+            return 1;
+
+        var count = (int)Math.Ceiling(includedAngle / (Math.PI / 18.0));
+        if (count < 4)
+            return 4;
+
+        return count > 96 ? 96 : count;
+    }
+
     internal static bool TryInferAxisAlignedRectangleBounds(
+        Extents3d targetExtents,
+        IReadOnlyList<AxisAlignedSegment> segments,
+        out Extents3d frameExtents)
+    {
+        if (TryInferClosedAxisAlignedRectangleBounds(targetExtents, segments, out frameExtents))
+            return true;
+
+        return TryInferCenterCrossingAxisAlignedRectangleBounds(targetExtents, segments, out frameExtents);
+    }
+
+    private static bool TryInferClosedAxisAlignedRectangleBounds(
         Extents3d targetExtents,
         IReadOnlyList<AxisAlignedSegment> segments,
         out Extents3d frameExtents)
@@ -1044,6 +1493,93 @@ internal static class RectangleCenterAlignCommandService
         return found;
     }
 
+    private static bool TryInferCenterCrossingAxisAlignedRectangleBounds(
+        Extents3d targetExtents,
+        IReadOnlyList<AxisAlignedSegment> segments,
+        out Extents3d frameExtents)
+    {
+        frameExtents = default;
+        if (segments.Count == 0)
+            return false;
+
+        var minPoint = targetExtents.MinPoint;
+        var maxPoint = targetExtents.MaxPoint;
+        var center = GetExtentsCenter(targetExtents);
+        var verticalLines = BuildCoverageLines(segments, isVertical: true);
+        var horizontalLines = BuildCoverageLines(segments, isVertical: false);
+        if (verticalLines.Count == 0 || horizontalLines.Count == 0)
+            return false;
+
+        var leftCandidates = verticalLines
+            .Where(line =>
+                line.Coordinate <= minPoint.X + AxisAlignmentTolerance &&
+                line.CoversValue(center.Y, AxisMergeTolerance))
+            .OrderByDescending(line => line.Coordinate)
+            .ToList();
+        var rightCandidates = verticalLines
+            .Where(line =>
+                line.Coordinate >= maxPoint.X - AxisAlignmentTolerance &&
+                line.CoversValue(center.Y, AxisMergeTolerance))
+            .OrderBy(line => line.Coordinate)
+            .ToList();
+        var bottomCandidates = horizontalLines
+            .Where(line =>
+                line.Coordinate <= minPoint.Y + AxisAlignmentTolerance &&
+                line.CoversValue(center.X, AxisMergeTolerance))
+            .OrderByDescending(line => line.Coordinate)
+            .ToList();
+        var topCandidates = horizontalLines
+            .Where(line =>
+                line.Coordinate >= maxPoint.Y - AxisAlignmentTolerance &&
+                line.CoversValue(center.X, AxisMergeTolerance))
+            .OrderBy(line => line.Coordinate)
+            .ToList();
+        if (leftCandidates.Count == 0 ||
+            rightCandidates.Count == 0 ||
+            bottomCandidates.Count == 0 ||
+            topCandidates.Count == 0)
+        {
+            return false;
+        }
+
+        var found = false;
+        var bestArea = double.MaxValue;
+        foreach (var leftLine in leftCandidates)
+        {
+            foreach (var rightLine in rightCandidates)
+            {
+                if (rightLine.Coordinate <= leftLine.Coordinate + GeometryTolerance)
+                    continue;
+
+                foreach (var bottomLine in bottomCandidates)
+                {
+                    foreach (var topLine in topCandidates)
+                    {
+                        if (topLine.Coordinate <= bottomLine.Coordinate + GeometryTolerance)
+                            continue;
+
+                        var candidateExtents = new Extents3d(
+                            new Point3d(leftLine.Coordinate, bottomLine.Coordinate, minPoint.Z),
+                            new Point3d(rightLine.Coordinate, topLine.Coordinate, maxPoint.Z));
+                        if (!ContainsExtents(candidateExtents, targetExtents, AxisAlignmentTolerance))
+                            continue;
+
+                        var area = (rightLine.Coordinate - leftLine.Coordinate) *
+                                   (topLine.Coordinate - bottomLine.Coordinate);
+                        if (found && area >= bestArea - GeometryTolerance)
+                            continue;
+
+                        bestArea = area;
+                        frameExtents = candidateExtents;
+                        found = true;
+                    }
+                }
+            }
+        }
+
+        return found;
+    }
+
     internal static bool TryInferAxisAlignedRectangleBounds(
         Point3d samplePoint,
         IReadOnlyList<AxisAlignedSegment> segments,
@@ -1084,41 +1620,6 @@ internal static class RectangleCenterAlignCommandService
         return lines;
     }
 
-    private static bool TryGetRectangleArea(Point3d[] points, out double area)
-    {
-        area = 0.0;
-        if (points.Length != 4)
-            return false;
-
-        var edges = new Vector2d[4];
-        var lengths = new double[4];
-        for (var index = 0; index < 4; index++)
-        {
-            var nextIndex = (index + 1) % 4;
-            edges[index] = new Vector2d(points[nextIndex].X - points[index].X, points[nextIndex].Y - points[index].Y);
-            lengths[index] = edges[index].Length;
-            if (lengths[index] <= GeometryTolerance)
-                return false;
-        }
-
-        if (!ArePerpendicular(edges[0], edges[1], lengths[0], lengths[1]) ||
-            !ArePerpendicular(edges[1], edges[2], lengths[1], lengths[2]) ||
-            !ArePerpendicular(edges[2], edges[3], lengths[2], lengths[3]) ||
-            !ArePerpendicular(edges[3], edges[0], lengths[3], lengths[0]))
-        {
-            return false;
-        }
-
-        if (!AreParallel(edges[0], edges[2], lengths[0], lengths[2]) ||
-            !AreParallel(edges[1], edges[3], lengths[1], lengths[3]))
-        {
-            return false;
-        }
-
-        area = lengths[0] * lengths[1];
-        return area > GeometryTolerance;
-    }
-
     private static bool TryGetEntityExtents(Entity entity, out Extents3d extents)
     {
         extents = default;
@@ -1147,6 +1648,44 @@ internal static class RectangleCenterAlignCommandService
                outer.MinPoint.Y <= inner.MinPoint.Y + tolerance &&
                outer.MaxPoint.X >= inner.MaxPoint.X - tolerance &&
                outer.MaxPoint.Y >= inner.MaxPoint.Y - tolerance;
+    }
+
+    private static bool ContainsTarget(RectangleFrameInfo frameInfo, Extents3d targetExtents)
+    {
+        if (frameInfo.HasBoundary)
+            return ContainsBoundaryTarget(frameInfo.BoundaryPoints, targetExtents, AxisAlignmentTolerance);
+
+        return ContainsExtents(frameInfo.Extents, targetExtents);
+    }
+
+    private static bool ContainsBoundaryTarget(
+        IReadOnlyList<Point3d> boundaryPoints,
+        Extents3d targetExtents,
+        double tolerance)
+    {
+        var targetCorners = new[]
+        {
+            new Point3d(targetExtents.MinPoint.X, targetExtents.MinPoint.Y, targetExtents.MinPoint.Z),
+            new Point3d(targetExtents.MinPoint.X, targetExtents.MaxPoint.Y, targetExtents.MinPoint.Z),
+            new Point3d(targetExtents.MaxPoint.X, targetExtents.MinPoint.Y, targetExtents.MinPoint.Z),
+            new Point3d(targetExtents.MaxPoint.X, targetExtents.MaxPoint.Y, targetExtents.MinPoint.Z)
+        };
+
+        for (var index = 0; index < targetCorners.Length; index++)
+        {
+            if (!PlanarPolygonGeometry.ContainsPoint(boundaryPoints, targetCorners[index], tolerance))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool ContainsFramePoint(RectangleFrameInfo frameInfo, Point3d point, double tolerance = GeometryTolerance)
+    {
+        if (frameInfo.HasBoundary)
+            return PlanarPolygonGeometry.ContainsPoint(frameInfo.BoundaryPoints, point, tolerance);
+
+        return ContainsPoint(frameInfo.Extents, point, tolerance);
     }
 
     private static bool ContainsPoint(Extents3d extents, Point3d point, double tolerance = GeometryTolerance)
@@ -1219,18 +1758,6 @@ internal static class RectangleCenterAlignCommandService
             (extents.MinPoint.X + extents.MaxPoint.X) * 0.5,
             (extents.MinPoint.Y + extents.MaxPoint.Y) * 0.5,
             (extents.MinPoint.Z + extents.MaxPoint.Z) * 0.5);
-    }
-
-    private static bool ArePerpendicular(Vector2d left, Vector2d right, double leftLength, double rightLength)
-    {
-        var value = Math.Abs(left.DotProduct(right) / (leftLength * rightLength));
-        return value <= RightAngleTolerance;
-    }
-
-    private static bool AreParallel(Vector2d left, Vector2d right, double leftLength, double rightLength)
-    {
-        var value = Math.Abs(left.DotProduct(right) / (leftLength * rightLength));
-        return Math.Abs(1.0 - value) <= RightAngleTolerance;
     }
 
     internal readonly struct AxisAlignedSegment
@@ -1358,25 +1885,61 @@ internal static class RectangleCenterAlignCommandService
         internal double End { get; }
     }
 
+    private readonly struct TargetCandidate
+    {
+        internal TargetCandidate(ObjectId objectId, Extents3d extents)
+        {
+            ObjectId = objectId;
+            Extents = extents;
+        }
+
+        internal ObjectId ObjectId { get; }
+        internal Extents3d Extents { get; }
+    }
+
     private readonly struct RectangleFrameInfo
     {
-        private RectangleFrameInfo(ObjectId objectId, Point3d center, Extents3d extents, double area, bool requiresEntityValidation)
+        private RectangleFrameInfo(
+            ObjectId objectId,
+            Point3d center,
+            Extents3d extents,
+            double area,
+            bool requiresEntityValidation,
+            Point3d[] boundaryPoints)
         {
             ObjectId = objectId;
             Center = center;
             Extents = extents;
             Area = area;
             RequiresEntityValidation = requiresEntityValidation;
+            BoundaryPoints = boundaryPoints;
         }
 
-        internal static RectangleFrameInfo CreateEntityBacked(ObjectId objectId, Extents3d extents, double area)
-            => new(objectId, GetExtentsCenter(extents), extents, area, requiresEntityValidation: true);
+        internal static RectangleFrameInfo CreateEntityBacked(
+            ObjectId objectId,
+            Point3d center,
+            Extents3d extents,
+            double area,
+            IReadOnlyList<Point3d> boundaryPoints)
+            => new(objectId, center, extents, area, requiresEntityValidation: true, boundaryPoints.ToArray());
 
         internal static RectangleFrameInfo CreateInferred(Extents3d extents)
-            => new(ObjectId.Null, GetExtentsCenter(extents), extents, GetExtentsArea(extents), requiresEntityValidation: false);
+            => new(
+                ObjectId.Null,
+                GetExtentsCenter(extents),
+                extents,
+                GetExtentsArea(extents),
+                requiresEntityValidation: false,
+                Array.Empty<Point3d>());
 
         internal static RectangleFrameInfo CreateInferred(Extents3d extents, double area)
-            => new(ObjectId.Null, GetExtentsCenter(extents), extents, area, requiresEntityValidation: false);
+            => new(
+                ObjectId.Null,
+                GetExtentsCenter(extents),
+                extents,
+                area,
+                requiresEntityValidation: false,
+                Array.Empty<Point3d>());
 
         internal bool IsResolved => Area > GeometryTolerance;
         internal bool RequiresEntityValidation { get; }
@@ -1384,6 +1947,8 @@ internal static class RectangleCenterAlignCommandService
         internal Point3d Center { get; }
         internal Extents3d Extents { get; }
         internal double Area { get; }
+        internal IReadOnlyList<Point3d> BoundaryPoints { get; }
+        internal bool HasBoundary => BoundaryPoints != null && BoundaryPoints.Count >= 3;
     }
 
     private static double GetExtentsArea(Extents3d extents)

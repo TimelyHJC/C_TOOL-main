@@ -8,6 +8,10 @@ internal sealed class DashedLineSettingsDto
 
     public double LinetypeScale { get; set; } = 1.0;
 
+    public bool UsePaperSpaceUnitsForScaling { get; set; }
+
+    public double GlobalLinetypeScale { get; set; } = 1.0;
+
     public string ColorMode { get; set; } = DashedLineColorModes.Keep;
 
     public int? ColorIndex { get; set; }

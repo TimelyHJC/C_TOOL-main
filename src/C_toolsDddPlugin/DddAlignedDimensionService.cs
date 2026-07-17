@@ -55,6 +55,9 @@ internal static class DddAlignedDimensionService
 
             var points = SortPoints(new List<Point3d> { firstPoint, secondPoint }, firstPoint, secondPoint - firstPoint);
             var dimensionIds = new List<ObjectId> { initialDimensionId };
+            if (!TryApplyChainTextAvoidance(doc, points, dimensionIds, signedOffset, out error))
+                WriteAvoidanceFailure(doc, error);
+
             ContinueChain(doc, points, dimensionIds, signedOffset);
         }
         finally
@@ -247,6 +250,9 @@ internal static class DddAlignedDimensionService
             else
                 dimensionIds.Add(createdDimensionId);
             chainPoints = BuildUpdatedPointList(chainPoints, projectedPoint, axisOrigin, axisDirection);
+            if (!TryApplyChainTextAvoidance(doc, chainPoints, dimensionIds, signedOffset, out error))
+                WriteAvoidanceFailure(doc, error);
+
             ed.WriteMessage("\nC_TOOL：已追加对齐标注，继续点终点。");
         }
     }

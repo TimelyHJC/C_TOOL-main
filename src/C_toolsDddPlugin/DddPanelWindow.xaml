@@ -14,7 +14,7 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False"
-        ShowActivated="False"
+        ShowActivated="True"
         Topmost="False"
         Background="#262C38"
         Foreground="#E8EAED"

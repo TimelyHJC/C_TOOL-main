@@ -41,9 +41,12 @@ internal static partial class WallFinishCommandService
                 return;
             }
 
-            CenterPoint = new Point2d((minX + maxX) * 0.5, (minY + maxY) * 0.5);
             var width = maxX - minX;
             var height = maxY - minY;
+            var boundsArea = Math.Max(0.0, width) * Math.Max(0.0, height);
+            CenterPoint = TryGetPrimaryClosedLoopCenter(closedLoops, boundsArea, out var closedLoopCenter)
+                ? closedLoopCenter
+                : new Point2d((minX + maxX) * 0.5, (minY + maxY) * 0.5);
             BoundsDiagonal = Math.Sqrt((width * width) + (height * height));
             return;
 
@@ -62,6 +65,29 @@ internal static partial class WallFinishCommandService
                 if (point.X > maxX) maxX = point.X;
                 if (point.Y > maxY) maxY = point.Y;
             }
+        }
+
+        private static bool TryGetPrimaryClosedLoopCenter(
+            IReadOnlyList<QuickClosedLoop> closedLoops,
+            double boundsArea,
+            out Point2d centerPoint)
+        {
+            centerPoint = Point2d.Origin;
+            var found = false;
+            var bestArea = 0.0;
+            var minimumArea = Math.Max(boundsArea * 0.2, PointTolerance);
+            for (var i = 0; i < closedLoops.Count; i++)
+            {
+                var loop = closedLoops[i];
+                if (loop.Area < minimumArea || loop.Area <= bestArea + PointTolerance)
+                    continue;
+
+                centerPoint = loop.CenterPoint;
+                bestArea = loop.Area;
+                found = true;
+            }
+
+            return found;
         }
 
         internal double Elevation { get; }
@@ -140,7 +166,16 @@ internal static partial class WallFinishCommandService
 
             BoundsWidth = maxX - minX;
             BoundsHeight = maxY - minY;
-            CenterPoint = new Point2d((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+            if (PlanarPolygonGeometry.TryComputeCentroid(vertices, elevation, out var centroid, out var area, PointTolerance))
+            {
+                CenterPoint = new Point2d(centroid.X, centroid.Y);
+                Area = area;
+            }
+            else
+            {
+                CenterPoint = new Point2d((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+                Area = Math.Max(0.0, BoundsWidth) * Math.Max(0.0, BoundsHeight);
+            }
         }
 
         internal ObjectId SourceEntityId { get; }
@@ -152,6 +187,8 @@ internal static partial class WallFinishCommandService
         internal double BoundsWidth { get; }
 
         internal double BoundsHeight { get; }
+
+        internal double Area { get; }
 
         internal Point2d CenterPoint { get; }
 

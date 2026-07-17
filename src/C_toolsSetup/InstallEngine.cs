@@ -114,6 +114,21 @@ internal static class InstallEngine
                 options.AcadRegistryVersionKey,
                 options.AcadRegistryProductKey,
                 log);
+            var fontPaths =
+                BundleInstall.TryResolveInitialFontFilePaths(initialDataFolderForInstall)
+                    .Concat(BundleInstall.TryResolveInitialFontFilePaths(
+                        BundleInstall.TryResolveDefaultInitialUserDataFolderPath(sourceRoot)))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            AcadFontInstaller.InstallFontsToProfiles(
+                fontPaths,
+                options.AcadRegistryVersionKey,
+                options.AcadRegistryProductKey,
+                log);
+            AcadFontInstaller.CopyFontsToDirectory(
+                fontPaths,
+                transaction.StagingPluginDir,
+                log);
 
             progressTracker.ReportPromotingPluginDirectory();
             transaction.PromoteStagingDirectory(log);
@@ -136,6 +151,12 @@ internal static class InstallEngine
                     options.AcadRegistryProductKey,
                     log);
                 log?.Invoke($"受信任位置写入/更新数量：{trustedPathCount}");
+                var supportPathCount = AcadFontInstaller.AppendSupportSearchPathToProfiles(
+                    pluginDir,
+                    options.AcadRegistryVersionKey,
+                    options.AcadRegistryProductKey,
+                    log);
+                log?.Invoke($"CAD 支持搜索路径写入/更新数量：{supportPathCount}");
 
                 progressTracker.ReportUpdatingStartupEntries();
                 var startupCount = AcadPluginStartupRegistry.RegisterBundlesAndCleanupOppositeHive(

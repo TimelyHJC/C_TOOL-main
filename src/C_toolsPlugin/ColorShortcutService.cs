@@ -72,8 +72,20 @@ internal static partial class ColorShortcutService
         if (msg.message != WmKeyDown && msg.message != WmSysKeyDown)
             return;
 
-        if (IsCadCommandActive() || IsTextEditingFocused())
+        if (IsPluginWpfKeyboardMessage(msg.hwnd) || IsTextEditingFocused())
+        {
+            s_inputState.Clear();
             return;
+        }
+
+        if (IsCadCommandActive())
+            return;
+
+        if (!HasImpliedSelection())
+        {
+            s_inputState.Clear();
+            return;
+        }
 
         var vk = msg.wParam.ToInt32() & 0xFFFF;
         var outcome = s_inputState.ProcessVirtualKey(vk, HasCommandModifier(Keyboard.Modifiers));
@@ -359,20 +371,96 @@ internal static partial class ColorShortcutService
         }
     }
 
+    private static bool HasImpliedSelection()
+    {
+        try
+        {
+            var doc = AcAp.DocumentManager.MdiActiveDocument;
+            if (doc == null)
+                return false;
+
+            var implied = doc.Editor.SelectImplied();
+            return implied.Status == PromptStatus.OK &&
+                   implied.Value != null &&
+                   implied.Value.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool IsTextEditingFocused()
     {
         if (Keyboard.FocusedElement is not DependencyObject focused)
             return false;
 
-        while (focused != null)
+        return IsTextEditingElementOrChild(focused);
+    }
+
+    private static bool IsTextEditingElementOrChild(DependencyObject focused)
+    {
+        DependencyObject? element = focused;
+        while (element != null)
         {
-            if (focused is TextBoxBase || focused is PasswordBox || focused is ComboBox)
+            if (element is TextBoxBase || element is PasswordBox || element is ComboBox)
                 return true;
 
-            focused = VisualTreeHelper.GetParent(focused);
+            element = GetDependencyObjectParent(element);
         }
 
         return false;
+    }
+
+    private static bool IsPluginWpfKeyboardMessage(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            var source = HwndSource.FromHwnd(hwnd);
+            if (source?.RootVisual is not DependencyObject root)
+                return false;
+
+            var window = root as Window ?? Window.GetWindow(root);
+            return IsPluginVisual(root) || (window != null && IsPluginVisual(window));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsPluginVisual(DependencyObject visual)
+    {
+        var assemblyName = visual.GetType().Assembly.GetName().Name;
+        if (string.IsNullOrWhiteSpace(assemblyName))
+            return false;
+
+        return assemblyName.StartsWith("C_TOOL", StringComparison.OrdinalIgnoreCase) ||
+               assemblyName.StartsWith("C_tools", StringComparison.OrdinalIgnoreCase) ||
+               assemblyName.StartsWith("V_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static DependencyObject? GetDependencyObjectParent(DependencyObject element)
+    {
+        try
+        {
+            var parent = VisualTreeHelper.GetParent(element);
+            if (parent != null)
+                return parent;
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        if (element is FrameworkElement frameworkElement)
+            return frameworkElement.Parent;
+        if (element is FrameworkContentElement frameworkContentElement)
+            return frameworkContentElement.Parent;
+
+        return LogicalTreeHelper.GetParent(element);
     }
 
     private static void TryWriteMessage(string message)

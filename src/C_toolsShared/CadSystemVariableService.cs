@@ -22,6 +22,8 @@ public static class SystemVariableNames
     public const string HpAngle = "HPANG";
     public const string HpQuickPreview = "HPQUICKPREVIEW";
     public const string HpOriginMode = "HPORIGINMODE";
+    public const string LtScale = "LTSCALE";
+    public const string PsLtScale = "PSLTSCALE";
     public const string FileDia = "FILEDIA";
     public const string CmdEcho = "CMDECHO";
     public const string Cannoscale = "CANNOSCALE";

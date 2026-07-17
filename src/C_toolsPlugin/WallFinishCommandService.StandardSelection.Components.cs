@@ -230,23 +230,14 @@ internal static partial class WallFinishCommandService
 
         private static Point3d ComputeLoopCenter(IReadOnlyList<Point2d> vertices, double elevation)
         {
-            if (vertices.Count == 0)
-                return new Point3d(0.0, 0.0, elevation);
-
-            var minX = double.MaxValue;
-            var minY = double.MaxValue;
-            var maxX = double.MinValue;
-            var maxY = double.MinValue;
-            for (var i = 0; i < vertices.Count; i++)
-            {
-                var point = vertices[i];
-                if (point.X < minX) minX = point.X;
-                if (point.Y < minY) minY = point.Y;
-                if (point.X > maxX) maxX = point.X;
-                if (point.Y > maxY) maxY = point.Y;
-            }
-
-            return new Point3d((minX + maxX) * 0.5, (minY + maxY) * 0.5, elevation);
+            return PlanarPolygonGeometry.TryComputeCentroid(
+                vertices,
+                elevation,
+                out var centerPoint,
+                out _,
+                PointTolerance)
+                ? centerPoint
+                : PlanarPolygonGeometry.ComputeBoundsCenter(vertices, elevation);
         }
 
         internal static GuideChainSelection? CreateClosedLoopGuideSelection(

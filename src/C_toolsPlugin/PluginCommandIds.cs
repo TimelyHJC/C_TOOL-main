@@ -58,6 +58,9 @@ internal static class PluginCommandIds
     /// <summary>将所选对象整体居中到所在矩形框中心；可直接选对象与框，也可只选对象后自动识别矩形框。</summary>
     internal const string RectangleCenterAlign = C_toolsCommandIds.MainToolset.RectangleCenterAlign;
 
+    /// <summary>识别矩形范围并生成折空符号。</summary>
+    internal const string FoldBreakSymbol = C_toolsCommandIds.MainToolset.FoldBreakSymbol;
+
     /// <summary>从布局视口内部切回视口外（纸空间）。</summary>
     internal const string SwitchToPaperSpace = C_toolsCommandIds.MainToolset.SwitchToPaperSpace;
 

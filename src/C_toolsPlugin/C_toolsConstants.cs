@@ -36,6 +36,8 @@ internal static class SystemVariableNames
     internal const string HpAngle = C_toolsShared.SystemVariableNames.HpAngle;
     internal const string HpQuickPreview = C_toolsShared.SystemVariableNames.HpQuickPreview;
     internal const string HpOriginMode = C_toolsShared.SystemVariableNames.HpOriginMode;
+    internal const string LtScale = C_toolsShared.SystemVariableNames.LtScale;
+    internal const string PsLtScale = C_toolsShared.SystemVariableNames.PsLtScale;
     internal const string FileDia = C_toolsShared.SystemVariableNames.FileDia;
     internal const string CmdEcho = C_toolsShared.SystemVariableNames.CmdEcho;
     internal const string Cannoscale = C_toolsShared.SystemVariableNames.Cannoscale;

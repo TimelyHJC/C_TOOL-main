@@ -400,6 +400,9 @@ internal static partial class WallFinishCommandService
 
         internal static Point3d ComputeRecognizedFigureCenter(IReadOnlyList<GuideChainSelection> guideSelections)
         {
+            if (TryComputeClosedGuideCenter(guideSelections, out var closedGuideCenter))
+                return closedGuideCenter;
+
             var minX = double.MaxValue;
             var minY = double.MaxValue;
             var minZ = double.MaxValue;
@@ -435,6 +438,42 @@ internal static partial class WallFinishCommandService
             return found
                 ? new Point3d((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5)
                 : Point3d.Origin;
+        }
+
+        private static bool TryComputeClosedGuideCenter(
+            IReadOnlyList<GuideChainSelection> guideSelections,
+            out Point3d centerPoint)
+        {
+            centerPoint = Point3d.Origin;
+            var found = false;
+            var bestArea = 0.0;
+            for (var i = 0; i < guideSelections.Count; i++)
+            {
+                var guidePolyline = guideSelections[i].GuidePolyline;
+                if (!guidePolyline.Closed || guidePolyline.NumberOfVertices < 3)
+                    continue;
+
+                var vertices = new List<Point2d>(guidePolyline.NumberOfVertices);
+                for (var vertexIndex = 0; vertexIndex < guidePolyline.NumberOfVertices; vertexIndex++)
+                    vertices.Add(guidePolyline.GetPoint2dAt(vertexIndex));
+
+                if (!PlanarPolygonGeometry.TryComputeCentroid(
+                        vertices,
+                        guidePolyline.Elevation,
+                        out var candidateCenter,
+                        out var area,
+                        PointTolerance) ||
+                    area <= bestArea + PointTolerance)
+                {
+                    continue;
+                }
+
+                centerPoint = candidateCenter;
+                bestArea = area;
+                found = true;
+            }
+
+            return found;
         }
     }
 }

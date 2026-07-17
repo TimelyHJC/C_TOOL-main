@@ -149,25 +149,37 @@ internal static class SaveDuplicateChecker
         IList<CommandCatalogRow> list,
         HashSet<string> layerKeys)
     {
+        var commandsByAlias = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in list)
+        {
+            if (IsLayerRow(row))
+                continue;
+
+            var command = (row.CommandName ?? "").Trim();
+            if (command.Length == 0)
+                continue;
+
+            foreach (var alias in CadPgpMerge.EnumerateNormalizedAliasTokensFromCell(row.AliasForCommandSave))
+            {
+                if (!layerKeys.Contains(alias))
+                    continue;
+
+                if (!commandsByAlias.TryGetValue(alias, out var commands))
+                {
+                    commands = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    commandsByAlias.Add(alias, commands);
+                }
+
+                commands.Add(command);
+            }
+        }
+
         var lines = new List<string>();
         foreach (var key in layerKeys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
-            var cmds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var row in list.Where(r => !IsLayerRow(r)))
-            {
-                foreach (var a in CadPgpMerge.EnumerateNormalizedAliasTokensFromCell(row.AliasForCommandSave))
-                {
-                    if (!string.Equals(a, key, StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    var cmd = (row.CommandName ?? "").Trim();
-                    if (cmd.Length > 0)
-                        cmds.Add(cmd);
-                }
-            }
-
-            if (cmds.Count == 0)
+            if (!commandsByAlias.TryGetValue(key, out var commands))
                 continue;
-            var joined = string.Join("、", cmds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+            var joined = string.Join("、", commands.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
             lines.Add($"「{key}」为图层快捷键；命令表中的同名别名对应：{joined}");
         }
 

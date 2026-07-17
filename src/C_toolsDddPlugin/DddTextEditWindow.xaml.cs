@@ -56,6 +56,7 @@ public partial class DddTextEditWindow : Window
     internal DddTextEditWindow(IReadOnlyList<string> selectedTexts, int selectedCount)
     {
         InitializeComponent();
+        DddTextInputFocusHelper.Attach(this);
         SourceInitialized += (_, _) =>
         {
             ApplyFixedWindowSize();
@@ -85,8 +86,7 @@ public partial class DddTextEditWindow : Window
 
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            TxtEditText.Focus();
-            TxtEditText.SelectAll();
+            DddTextInputFocusHelper.FocusTextBox(this, TxtEditText, selectAll: true);
             DddInputLanguageHelper.SwitchToChineseForWindow(this, "切换 F_ED 中文输入法");
         }), DispatcherPriority.Input);
     }
@@ -872,9 +872,7 @@ public partial class DddTextEditWindow : Window
     {
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            TxtEditText.Focus();
-            if (selectAll)
-                TxtEditText.SelectAll();
+            DddTextInputFocusHelper.FocusTextBox(this, TxtEditText, selectAll: selectAll);
         }), DispatcherPriority.Input);
     }
 

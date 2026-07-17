@@ -52,15 +52,10 @@ internal static class DddDimensionMergeService
         var ed = doc.Editor;
         ObjectId seedDimensionId;
         ObjectId boundaryDimensionId;
+        List<ObjectId>? impliedIds = null;
 
-        if (TryGetImpliedDimensionIds(ed, out var impliedIds))
+        if (TryGetImpliedDimensionIds(ed, out impliedIds))
         {
-            if (impliedIds.Count > 2)
-            {
-                error = "F_DV 最多只支持预选两条标注，请重新选择。";
-                return false;
-            }
-
             seedDimensionId = impliedIds[0];
             boundaryDimensionId = impliedIds.Count == 2 ? impliedIds[1] : ObjectId.Null;
         }
@@ -80,6 +75,9 @@ internal static class DddDimensionMergeService
 
         if (!TryReadMergeContext(doc, seedDimensionId, out var context, out error))
             return false;
+
+        if (impliedIds is { Count: > 2 })
+            return TryResolveMultiSelectionRange(context, impliedIds, out plan, out error);
 
         if (context.DimensionIds.Count < 2)
         {
@@ -116,6 +114,42 @@ internal static class DddDimensionMergeService
 
         var rangeStartIndex = Math.Min(context.SelectedIndex, boundaryIndex);
         var rangeEndIndex = Math.Max(context.SelectedIndex, boundaryIndex);
+        plan = new MergePlan(context, rangeStartIndex, rangeEndIndex);
+        return true;
+    }
+
+    private static bool TryResolveMultiSelectionRange(
+        MergeContext context,
+        IReadOnlyList<ObjectId> selectedDimensionIds,
+        out MergePlan plan,
+        out string error)
+    {
+        plan = default;
+        error = string.Empty;
+
+        var rangeStartIndex = int.MaxValue;
+        var rangeEndIndex = int.MinValue;
+        var foundCount = 0;
+        foreach (var selectedId in selectedDimensionIds)
+        {
+            var index = IndexOfObjectId(context.DimensionIds, selectedId);
+            if (index < 0)
+            {
+                error = "预选标注不在同一排连续标注链中，请重新选择。";
+                return false;
+            }
+
+            rangeStartIndex = Math.Min(rangeStartIndex, index);
+            rangeEndIndex = Math.Max(rangeEndIndex, index);
+            foundCount++;
+        }
+
+        if (foundCount < 2 || rangeStartIndex == rangeEndIndex)
+        {
+            error = "请至少预选两条同排标注作为合并范围。";
+            return false;
+        }
+
         plan = new MergePlan(context, rangeStartIndex, rangeEndIndex);
         return true;
     }

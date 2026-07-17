@@ -1,8 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using C_toolsShared;
 
@@ -100,41 +98,36 @@ internal static class QqqRecognitionTemplateStore
     internal const string ModeViewport = "Viewport";
 
     private const int FileVersion = 1;
-    private const string FolderName = "QqqRecognitionTemplates";
-    private const string FileExtension = ".json";
+    private const string GlobalFileName = "GlobalTemplates.json";
+    private const string LegacyFolderName = "QqqRecognitionTemplates";
     private static readonly object CacheSyncRoot = new();
     private static RecognitionTemplateCacheEntry? _cache;
 
-    internal static QqqRecognitionTemplateStoreState Load(string? documentPath)
+    internal static QqqRecognitionTemplateStoreState Load()
     {
-        var normalizedDocumentPath = NormalizeDocumentPath(documentPath);
-        if (normalizedDocumentPath.Length == 0)
-            return new QqqRecognitionTemplateStoreState();
-
-        var path = GetFilePath(normalizedDocumentPath);
+        var path = GetFilePath();
         lock (CacheSyncRoot)
         {
             var fileState = RecognitionTemplateFileState.Create(path);
-            if (_cache != null && _cache.Matches(normalizedDocumentPath, fileState))
+            if (_cache != null && _cache.Matches(fileState))
                 return CloneState(_cache.State);
 
             if (!C_toolsJsonFileStore.TryRead(
                     path,
                     JsonOptionsCache.ReadRelaxedCamelCase,
-                    $"读取 V_QQQ 图框识别项 {normalizedDocumentPath}",
-                    $"解析 V_QQQ 图框识别项 {normalizedDocumentPath}",
+                    "读取 V_QQQ 全局图框识别项",
+                    "解析 V_QQQ 全局图框识别项",
                     C_toolsDiagnostics.LogNonFatal,
                     out QqqRecognitionTemplateStoreState? state) ||
                 state == null)
             {
-                state = new QqqRecognitionTemplateStoreState { DocumentPath = normalizedDocumentPath };
+                state = TryLoadLegacySharedState() ?? new QqqRecognitionTemplateStoreState();
             }
 
-            state.DocumentPath = normalizedDocumentPath;
+            state.DocumentPath = "";
             state.Normalize();
 
             _cache = new RecognitionTemplateCacheEntry(
-                normalizedDocumentPath,
                 RecognitionTemplateFileState.Create(path),
                 CloneState(state),
                 CreateStateSignature(state));
@@ -142,10 +135,9 @@ internal static class QqqRecognitionTemplateStore
         }
     }
 
-    internal static bool Save(string? documentPath, QqqRecognitionTemplateStoreState? state)
+    internal static bool Save(QqqRecognitionTemplateStoreState? state)
     {
-        var normalizedDocumentPath = NormalizeDocumentPath(documentPath);
-        if (normalizedDocumentPath.Length == 0 || state == null)
+        if (state == null)
             return false;
 
         lock (CacheSyncRoot)
@@ -153,14 +145,15 @@ internal static class QqqRecognitionTemplateStore
             try
             {
                 state.Version = FileVersion;
-                state.DocumentPath = normalizedDocumentPath;
+                state.DocumentPath = "";
                 state.Normalize();
 
-                var path = GetFilePath(normalizedDocumentPath);
+                var path = GetFilePath();
                 var signature = CreateStateSignature(state);
                 var fileState = RecognitionTemplateFileState.Create(path);
-                if (_cache != null &&
-                    _cache.Matches(normalizedDocumentPath, fileState) &&
+                if (fileState.Exists &&
+                    _cache != null &&
+                    _cache.Matches(fileState) &&
                     string.Equals(_cache.Signature, signature, StringComparison.Ordinal))
                 {
                     return true;
@@ -170,14 +163,13 @@ internal static class QqqRecognitionTemplateStore
                         path,
                         state,
                         JsonOptionsCache.WriteIndentedCamelCase,
-                        $"写入 V_QQQ 图框识别项 {normalizedDocumentPath}",
+                        "写入 V_QQQ 全局图框识别项",
                         C_toolsDiagnostics.LogNonFatal))
                 {
                     return false;
                 }
 
                 _cache = new RecognitionTemplateCacheEntry(
-                    normalizedDocumentPath,
                     RecognitionTemplateFileState.Create(path),
                     CloneState(state),
                     signature);
@@ -201,55 +193,80 @@ internal static class QqqRecognitionTemplateStore
         return ModeBlock;
     }
 
-    private static string NormalizeDocumentPath(string? documentPath)
+    private static QqqRecognitionTemplateStoreState? TryLoadLegacySharedState()
     {
-        var value = (documentPath ?? "").Trim();
-        if (value.Length == 0)
-            return "";
-
+        var legacyFolder = Path.Combine(C_toolsPaths.UserConfigFolder, LegacyFolderName);
         try
         {
-            return Path.GetFullPath(value);
+            if (!Directory.Exists(legacyFolder))
+                return null;
+
+            var merged = new QqqRecognitionTemplateStoreState();
+            foreach (var legacyPath in Directory.EnumerateFiles(legacyFolder, "*.json").OrderBy(static x => x, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!C_toolsJsonFileStore.TryRead(
+                        legacyPath,
+                        JsonOptionsCache.ReadRelaxedCamelCase,
+                        $"读取 V_QQQ 旧图框识别项 {legacyPath}",
+                        $"解析 V_QQQ 旧图框识别项 {legacyPath}",
+                        C_toolsDiagnostics.LogNonFatal,
+                        out QqqRecognitionTemplateStoreState? legacyState) ||
+                    legacyState == null)
+                {
+                    continue;
+                }
+
+                legacyState.Normalize();
+                MergeState(merged, legacyState);
+            }
+
+            merged.Normalize();
+            return merged.Modes.Count == 0 ? null : merged;
         }
-        catch
+        catch (Exception ex)
         {
-            return value;
+            C_toolsDiagnostics.LogNonFatal("迁移 V_QQQ 旧图框识别项失败", ex);
+            return null;
         }
     }
 
-    private static string GetFilePath(string documentPath)
+    private static void MergeState(QqqRecognitionTemplateStoreState target, QqqRecognitionTemplateStoreState source)
     {
-        var fileName = BuildFileName(documentPath);
-        return Path.Combine(C_toolsPaths.UserConfigFolder, FolderName, fileName);
+        target.LastModeKey = NormalizeModeKey(source.LastModeKey);
+        foreach (var sourceMode in source.Modes.Where(static x => x != null))
+        {
+            var modeKey = NormalizeModeKey(sourceMode.ModeKey);
+            var targetMode = target.Modes.FirstOrDefault(x => string.Equals(x.ModeKey, modeKey, StringComparison.OrdinalIgnoreCase));
+            if (targetMode == null)
+            {
+                targetMode = new QqqRecognitionTemplateModeState { ModeKey = modeKey };
+                target.Modes.Add(targetMode);
+            }
+
+            foreach (var template in sourceMode.Templates.Where(static x => x != null && !string.IsNullOrWhiteSpace(x.Name)))
+            {
+                var name = template.Name.Trim();
+                var existing = targetMode.Templates.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (existing == null)
+                {
+                    targetMode.Templates.Add(new QqqRecognitionTemplateEntry
+                    {
+                        Name = name,
+                        SizeText = (template.SizeText ?? "").Trim(),
+                        IsSelected = template.IsSelected
+                    });
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(existing.SizeText))
+                    existing.SizeText = (template.SizeText ?? "").Trim();
+                existing.IsSelected |= template.IsSelected;
+            }
+        }
     }
 
-    private static string BuildFileName(string documentPath)
-    {
-        var drawingName = Path.GetFileNameWithoutExtension(documentPath);
-        if (string.IsNullOrWhiteSpace(drawingName))
-            drawingName = "Drawing";
-
-        drawingName = SanitizeFileName(drawingName.Trim());
-        return $"{drawingName}_{ComputeStableHash(documentPath)}{FileExtension}";
-    }
-
-    private static string ComputeStableHash(string value)
-    {
-        using var sha256 = SHA256.Create();
-        var bytes = Encoding.UTF8.GetBytes(value);
-        var hash = sha256.ComputeHash(bytes);
-        var sb = new StringBuilder(hash.Length * 2);
-        foreach (var b in hash.Take(8))
-            sb.Append(b.ToString("x2"));
-        return sb.ToString();
-    }
-
-    private static string SanitizeFileName(string value)
-    {
-        foreach (var invalid in Path.GetInvalidFileNameChars())
-            value = value.Replace(invalid, '_');
-        return value;
-    }
+    private static string GetFilePath() =>
+        Path.Combine(C_toolsPaths.UserConfigFolder, GlobalFileName);
 
     private static QqqRecognitionTemplateStoreState CloneState(QqqRecognitionTemplateStoreState source)
     {
@@ -293,26 +310,22 @@ internal static class QqqRecognitionTemplateStore
     private sealed class RecognitionTemplateCacheEntry
     {
         public RecognitionTemplateCacheEntry(
-            string documentPath,
             RecognitionTemplateFileState fileState,
             QqqRecognitionTemplateStoreState state,
             string signature)
         {
-            DocumentPath = documentPath;
             FileState = fileState;
             State = state;
             Signature = signature;
         }
 
-        public string DocumentPath { get; }
         public RecognitionTemplateFileState FileState { get; }
         public QqqRecognitionTemplateStoreState State { get; }
         public string Signature { get; }
 
-        public bool Matches(string documentPath, RecognitionTemplateFileState fileState)
+        public bool Matches(RecognitionTemplateFileState fileState)
         {
-            return string.Equals(DocumentPath, documentPath, StringComparison.OrdinalIgnoreCase) &&
-                   FileState.Equals(fileState);
+            return FileState.Equals(fileState);
         }
     }
 
@@ -327,7 +340,7 @@ internal static class QqqRecognitionTemplateStore
         }
 
         private string Path { get; }
-        private bool Exists { get; }
+        internal bool Exists { get; }
         private DateTime LastWriteTimeUtc { get; }
         private long Length { get; }
 

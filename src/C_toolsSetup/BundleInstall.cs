@@ -427,6 +427,29 @@ internal static class BundleInstall
         }
     }
 
+    internal static IReadOnlyList<string> TryResolveInitialFontFilePaths(string? initialUserDataFolderPath)
+    {
+        if (string.IsNullOrWhiteSpace(initialUserDataFolderPath))
+            return Array.Empty<string>();
+
+        try
+        {
+            var folder = Path.GetFullPath(initialUserDataFolderPath);
+            if (!Directory.Exists(folder))
+                return Array.Empty<string>();
+
+            return Directory
+                .EnumerateFiles(folder, "*.shx", SearchOption.AllDirectories)
+                .Where(path => AcadFontInstaller.IsCadFontFile(Path.GetFileName(path)))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
+
     private static string? TryResolveInitialUserDataFolder(string? sourceRoot)
     {
         if (string.IsNullOrWhiteSpace(sourceRoot))
@@ -452,7 +475,7 @@ internal static class BundleInstall
         foreach (var file in Directory.EnumerateFiles(sourceDir))
         {
             var fileName = Path.GetFileName(file);
-            if (IsCadPlotStyleFile(fileName))
+            if (IsCadManagedInitialFile(fileName))
                 continue;
 
             var dest = Path.Combine(destDir, MapInitialUserDataFileName(fileName));
@@ -476,6 +499,11 @@ internal static class BundleInstall
     {
         return fileName.EndsWith(".ctb", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith(".stb", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCadManagedInitialFile(string fileName)
+    {
+        return IsCadPlotStyleFile(fileName) || AcadFontInstaller.IsCadFontFile(fileName);
     }
 
     private static string MapInitialUserDataFileName(string fileName)
@@ -502,7 +530,7 @@ internal static class BundleInstall
             var relative = TryGetInitialUserDataResourceRelativePath(resourceName);
             if (relative == null)
                 continue;
-            if (IsCadPlotStyleFile(Path.GetFileName(relative)))
+            if (IsCadManagedInitialFile(Path.GetFileName(relative)))
                 continue;
 
             var dest = Path.GetFullPath(Path.Combine(destDir, MapInitialUserDataRelativePath(relative)));

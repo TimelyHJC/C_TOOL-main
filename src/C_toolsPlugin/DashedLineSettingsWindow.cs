@@ -19,6 +19,8 @@ internal sealed class DashedLineSettingsWindow : Window
     private readonly ComboBox _layerBox;
     private readonly ComboBox _linetypeBox;
     private readonly TextBox _linetypeScaleBox;
+    private readonly CheckBox _usePaperSpaceUnitsBox;
+    private readonly TextBox _globalLinetypeScaleBox;
     private readonly Func<Window, DashedLineStylePickResult>? _pickLineStyle;
     private readonly TextBlock _statusText;
 
@@ -46,6 +48,12 @@ internal sealed class DashedLineSettingsWindow : Window
 
         _linetypeScaleBox = CadDialogControlFactory.CreateTextBox(
             currentSettings.LinetypeScale.ToString("0.###", CultureInfo.InvariantCulture));
+
+        _usePaperSpaceUnitsBox = CreateCheckBox("缩放时使用图纸空间单位");
+        _usePaperSpaceUnitsBox.IsChecked = currentSettings.UsePaperSpaceUnitsForScaling;
+
+        _globalLinetypeScaleBox = CadDialogControlFactory.CreateTextBox(
+            currentSettings.GlobalLinetypeScale.ToString("0.####", CultureInfo.InvariantCulture));
 
         _colorValueBox = CadDialogControlFactory.CreateTextBox(
             currentSettings.ColorIndex?.ToString(CultureInfo.InvariantCulture) ?? "7");
@@ -127,6 +135,8 @@ internal sealed class DashedLineSettingsWindow : Window
         var panel = new StackPanel();
         panel.Children.Add(CadDialogControlFactory.CreateField("线型", CreateLinetypePickerRow()));
         panel.Children.Add(CadDialogControlFactory.CreateField("线型比例", _linetypeScaleBox));
+        panel.Children.Add(CadDialogControlFactory.CreateField("全局比例因子", _globalLinetypeScaleBox));
+        panel.Children.Add(CreateCheckBoxField(_usePaperSpaceUnitsBox));
         panel.Children.Add(CadDialogControlFactory.CreateField("线段颜色", _colorModeBox));
         panel.Children.Add(CadDialogControlFactory.CreateField("ACI 颜色值", _colorValueBox));
         panel.Children.Add(CadDialogControlFactory.CreateField("线段图层", _layerBox));
@@ -171,6 +181,26 @@ internal sealed class DashedLineSettingsWindow : Window
         Grid.SetColumn(pickButton, 1);
         row.Children.Add(pickButton);
         return row;
+    }
+
+    private static CheckBox CreateCheckBox(string text)
+    {
+        return new CheckBox
+        {
+            Content = text,
+            MinHeight = 28,
+            Foreground = System.Windows.Media.Brushes.White,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+    }
+
+    private static Border CreateCheckBoxField(CheckBox checkBox)
+    {
+        return new Border
+        {
+            Margin = new Thickness(0, 0, 0, 12),
+            Child = checkBox
+        };
     }
 
     private static ComboBox CreateEditableComboBox(IReadOnlyList<string> items)
@@ -277,6 +307,12 @@ internal sealed class DashedLineSettingsWindow : Window
             return false;
         }
 
+        if (!CadDialogValueHelper.TryParsePositiveDouble(_globalLinetypeScaleBox.Text, out var globalLinetypeScale))
+        {
+            error = "全局比例因子必须是大于 0 的数字。";
+            return false;
+        }
+
         var colorDisplay = (_colorModeBox.SelectedItem as string) ?? KeepOriginalColorDisplay;
         var colorMode = DashedLineColorModes.Keep;
         int? colorIndex = null;
@@ -308,6 +344,8 @@ internal sealed class DashedLineSettingsWindow : Window
         {
             LinetypeName = linetypeName,
             LinetypeScale = linetypeScale,
+            UsePaperSpaceUnitsForScaling = _usePaperSpaceUnitsBox.IsChecked == true,
+            GlobalLinetypeScale = globalLinetypeScale,
             ColorMode = colorMode,
             ColorIndex = colorIndex,
             TargetLayerName = targetLayerName

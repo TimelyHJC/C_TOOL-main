@@ -439,42 +439,13 @@ internal static class DddLeaderInsertService
         Point3d landingPoint,
         int landingSideSign)
     {
+        _ = arrowPoint;
         var sign = landingSideSign < 0 ? -1 : 1;
         var connectionOffset = GetConnectionOffsetFromLandingPoint(ml);
-        var targetConnection = new Point3d(
+        return new Point3d(
             landingPoint.X + (sign * connectionOffset),
             landingPoint.Y,
             landingPoint.Z);
-        var provisional = new Point3d(
-            landingPoint.X + (sign * connectionOffset),
-            landingPoint.Y,
-            landingPoint.Z);
-
-        var direction = new Vector3d(sign, 0, 0);
-        var resolved = provisional;
-
-        for (var i = 0; i < 2; i++)
-        {
-            ml.TextLocation = resolved;
-
-            Point3d actualConnection;
-            try
-            {
-                actualConnection = ml.ConnectionPoint(direction, ml.TextAttachmentDirection);
-            }
-            catch
-            {
-                actualConnection = ml.ConnectionPoint(direction);
-            }
-
-            var delta = targetConnection - actualConnection;
-            resolved = new Point3d(
-                resolved.X + delta.X,
-                resolved.Y + delta.Y,
-                resolved.Z + delta.Z);
-        }
-
-        return resolved;
     }
 
     internal static void ApplyLandingGeometry(
@@ -486,7 +457,24 @@ internal static class DddLeaderInsertService
         int landingSideSign)
     {
         var sign = landingSideSign < 0 ? -1 : 1;
+        if (!IsFinitePoint(arrowPoint) || !IsFinitePoint(landingPoint))
+            throw new ArgumentException("引线点坐标无效。");
+
         landingPoint = EnsureUsableLandingPoint(ml, arrowPoint, landingPoint, sign);
+        var resolvedTextLocation = ComputeTextLocationFromLandingPoint(ml, arrowPoint, landingPoint, sign);
+        if (!IsFinitePoint(resolvedTextLocation))
+            throw new ArgumentException("引线文字位置无效。");
+
+        // Move the content to the requested side before changing dogleg/vertices.
+        // This avoids a transient right-facing geometry while constructing a left leader.
+        ml.TextLocation = resolvedTextLocation;
+        var mtext = ml.MText;
+        if (mtext != null)
+        {
+            mtext.Location = resolvedTextLocation;
+            ml.MText = mtext;
+        }
+
         var doglegLength = GetEffectiveDoglegLength(ml);
 
         if (IsLandingEnabled(ml) && IsDoglegEnabled(ml))
@@ -501,13 +489,11 @@ internal static class DddLeaderInsertService
             {
                 C_toolsDiagnostics.LogNonFatal("MLeader 设置 Dogleg", ex);
             }
+            catch (Autodesk.AutoCAD.Runtime.Exception ex)
+            {
+                C_toolsDiagnostics.LogNonFatal("MLeader 设置 Dogleg（CAD）", ex);
+            }
         }
-
-        ml.SetFirstVertex(leaderLineIndex, arrowPoint);
-        ml.SetLastVertex(leaderLineIndex, landingPoint);
-
-        var resolvedTextLocation = ComputeTextLocationFromLandingPoint(ml, arrowPoint, landingPoint, sign);
-        ml.TextLocation = resolvedTextLocation;
 
         ml.SetFirstVertex(leaderLineIndex, arrowPoint);
         ml.SetLastVertex(leaderLineIndex, landingPoint);

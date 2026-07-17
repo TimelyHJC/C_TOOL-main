@@ -351,7 +351,13 @@ internal static class DddDimensionOuterDimensionService
             if (result.Status == PromptStatus.Keyword)
                 continue;
 
-            ed.WriteMessage($"\n{UIMessages.Prefix_C_TOOL}{UIMessages.DimensionCommand.F_DQQ_Cancelled}");
+            if (result.Status == PromptStatus.None)
+                return false;
+
+            if (result.Status == PromptStatus.Cancel)
+                ed.WriteMessage($"\n{UIMessages.Prefix_C_TOOL}{UIMessages.DimensionCommand.F_DQQ_Cancelled}");
+            else
+                ed.WriteMessage("\nC_TOOL：F_DQQ 未能读取标注选择。");
             return false;
         }
     }

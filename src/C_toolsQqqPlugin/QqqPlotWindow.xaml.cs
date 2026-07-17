@@ -43,9 +43,9 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
 
     private string _suggestedOutputFolder = "";
     private string _outputFolderTextBeforeEdit = "";
-    private string _recognitionTemplateDocumentPath = "";
     private bool _isPrinting;
     private bool _recognitionModeReady;
+    private bool _recognitionTemplatesLoaded;
     private bool _isLoadingRecognitionTemplates;
     private bool _isApplyingRecognitionMode;
     private int _sheetRefreshVersion;
@@ -109,7 +109,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         if (_outputFolders.Count > 0)
             OutputFolderCombo.SelectedItem = _outputFolders[0];
 
-        LoadRecognitionTemplatesForCurrentDocument(document?.Name);
+        LoadRecognitionTemplates();
         RefreshSavedSheetSetTabs();
         RestoreWorkingFramesForCurrentDocument();
     }
@@ -1265,12 +1265,13 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         }
     }
 
-    private void LoadRecognitionTemplatesForCurrentDocument(string? documentPath = null)
+    private void LoadRecognitionTemplates()
     {
-        _recognitionTemplateDocumentPath = (documentPath ?? GetCurrentDocumentName()).Trim();
-        _recognitionTemplateState = QqqRecognitionTemplateStore.Load(_recognitionTemplateDocumentPath);
+        _recognitionTemplatesLoaded = false;
+        _recognitionTemplateState = QqqRecognitionTemplateStore.Load();
         ApplyRecognitionMode(_recognitionTemplateState.LastModeKey);
         LoadRecognitionTemplatesForCurrentMode(isInitialLoad: true);
+        _recognitionTemplatesLoaded = true;
     }
 
     private void LoadRecognitionTemplatesForCurrentMode(bool isInitialLoad)
@@ -1305,13 +1306,13 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
 
     private void PersistRecognitionTemplatesForCurrentMode()
     {
-        if (string.IsNullOrWhiteSpace(_recognitionTemplateDocumentPath))
+        if (!_recognitionTemplatesLoaded)
             return;
 
         var modeKey = GetRecognitionModeKey();
         _recognitionTemplateState.LastModeKey = modeKey;
         _recognitionTemplateState.SetTemplates(modeKey, BuildRecognitionTemplateEntriesFromUi());
-        QqqRecognitionTemplateStore.Save(_recognitionTemplateDocumentPath, _recognitionTemplateState);
+        QqqRecognitionTemplateStore.Save(_recognitionTemplateState);
     }
 
     private IReadOnlyList<QqqRecognitionTemplateEntry> BuildRecognitionTemplateEntriesFromUi()
