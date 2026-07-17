@@ -814,7 +814,7 @@ internal static class DddDimensionShiftService
         if (dimensionIds.Count == 0)
             return true;
 
-        if (DddDimensionChainTextAvoidanceService.TryApplyDimensionIds(
+        if (DddDimensionTextAvoidanceService.TryApplyDimensionIds(
                 doc,
                 dimensionIds,
                 context.CommandName,
@@ -2217,9 +2217,7 @@ internal static class DddDimensionShiftService
         {
             var options = new JigPromptPointOptions(_prompt)
             {
-                BasePoint = _session.BasePoint,
-                UseBasePoint = true,
-                UserInputControls = UserInputControls.Accept3dCoordinates | UserInputControls.GovernedByOrthoMode
+                UserInputControls = UserInputControls.Accept3dCoordinates
             };
 
             var result = prompts.AcquirePoint(options);
@@ -2280,9 +2278,7 @@ internal static class DddDimensionShiftService
         {
             var options = new JigPromptPointOptions(_prompt)
             {
-                BasePoint = _session.BasePoint,
-                UseBasePoint = true,
-                UserInputControls = UserInputControls.Accept3dCoordinates | UserInputControls.GovernedByOrthoMode
+                UserInputControls = UserInputControls.Accept3dCoordinates
             };
 
             var result = prompts.AcquirePoint(options);
@@ -2368,9 +2364,7 @@ internal static class DddDimensionShiftService
         {
             var options = new JigPromptPointOptions(_prompt)
             {
-                BasePoint = _session.BasePoint,
-                UseBasePoint = true,
-                UserInputControls = UserInputControls.Accept3dCoordinates | UserInputControls.GovernedByOrthoMode
+                UserInputControls = UserInputControls.Accept3dCoordinates
             };
 
             var result = prompts.AcquirePoint(options);

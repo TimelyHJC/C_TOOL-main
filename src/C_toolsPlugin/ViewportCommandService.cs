@@ -219,6 +219,7 @@ internal static class ViewportCommandService
 
         var db = doc.Database;
         var currentScaleName = db.Cannoscale?.Name ?? "";
+        var currentDimStyleName = "";
         var scales = GetAnnotationScales(db);
         if (scales.Count == 0)
         {
@@ -226,7 +227,8 @@ internal static class ViewportCommandService
             return new AnnotationScaleSnapshot(
                 Array.Empty<AnnotationScaleGroupInfo>(),
                 Array.Empty<AnnotationScaleListItem>(),
-                currentScaleName);
+                currentScaleName,
+                currentDimStyleName);
         }
 
         var dimStyleNames = new List<string>();
@@ -237,24 +239,12 @@ internal static class ViewportCommandService
                 (database, tr) =>
                 {
                     var dimStyles = ListDimStyleNames(tr, database);
-                    var resolvedScaleName = currentScaleName;
-                    if (!database.TileMode &&
-                        TryResolveLayoutViewportIdForScaleChange(tr, doc, database, out var viewportId, out _) &&
-                        CadDatabaseScope.TryOpenAs<Viewport>(tr, viewportId, OpenMode.ForRead, out var viewport) &&
-                        viewport != null &&
-                        viewport.Number != 1)
-                    {
-                        var ratioText = FormatViewportScaleRatio(viewport.CustomScale);
-                        if (!string.IsNullOrWhiteSpace(ratioText))
-                            resolvedScaleName = ratioText;
-                    }
-
-                    return (DimStyleNames: dimStyles, CurrentScaleName: resolvedScaleName);
+                    return (DimStyleNames: dimStyles, CurrentDimStyleName: ReadCurrentDimStyleName(tr, database));
                 },
                 requireDocumentLock: true);
 
             dimStyleNames = snapshotData.DimStyleNames;
-            currentScaleName = snapshotData.CurrentScaleName;
+            currentDimStyleName = snapshotData.CurrentDimStyleName;
         }
         catch (InvalidOperationException ex)
         {
@@ -267,7 +257,7 @@ internal static class ViewportCommandService
 
         var groups = AnnotationScaleGrouping.ListGroups(scales, dimStyleNames);
         message = $"已载入 {scales.Count} 个标注比例。";
-        return new AnnotationScaleSnapshot(groups, scales, currentScaleName);
+        return new AnnotationScaleSnapshot(groups, scales, currentScaleName, currentDimStyleName);
     }
 
     internal static bool TryApplyAnnotationScale(
@@ -305,38 +295,13 @@ internal static class ViewportCommandService
             }
 
             appliedScaleName = selected.Name;
-            var scaleChanged = false;
             var annotationScaleChanged = false;
             var dimStyleChanged = false;
             var matchedDimStyle = false;
             var dimStyleName = "";
-            var isLayoutMode = !db.TileMode;
-            var scaleSubject = isLayoutMode ? "当前视口比例" : "当前标注比例";
 
             using (doc.LockDocument())
             {
-                if (isLayoutMode)
-                {
-                    if (!TryApplyLayoutViewportScale(
-                            doc,
-                            db,
-                            selected,
-                            out scaleChanged,
-                            out var resolvedScaleDisplay,
-                            out var scaleErrorMessage))
-                    {
-                        message = scaleErrorMessage;
-                        return false;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(resolvedScaleDisplay))
-                        appliedScaleName = resolvedScaleDisplay;
-                }
-                else
-                {
-                    scaleChanged = false;
-                }
-
                 var currentAnnotationScaleName = db.Cannoscale?.Name ?? "";
                 annotationScaleChanged = !string.Equals(selected.Name, currentAnnotationScaleName, StringComparison.OrdinalIgnoreCase);
                 if (annotationScaleChanged &&
@@ -360,12 +325,12 @@ internal static class ViewportCommandService
                 if (matchedDimStyle)
                     CurrentDimStyleSync.TrySyncToSystemVariable(dimStyleName, "F_DE");
 
-                TryRegenAfterScaleOrStyleChange(doc, scaleChanged || annotationScaleChanged || dimStyleChanged);
+                TryRegenAfterScaleOrStyleChange(doc, annotationScaleChanged || dimStyleChanged);
             }
 
-            var scaleMessage = scaleChanged
-                ? $"{scaleSubject}已切换为 {GetScaleDisplayText(selected)}"
-                : $"{scaleSubject}已是 {GetScaleDisplayText(selected)}";
+            var scaleMessage = annotationScaleChanged
+                ? $"当前标注比例已切换为 {GetScaleDisplayText(selected)}"
+                : $"当前标注比例已是 {GetScaleDisplayText(selected)}";
             if (dimStyleChanged)
             {
                 message = $"{scaleMessage}，当前标注样式已切换为 {dimStyleName}。";
@@ -399,149 +364,6 @@ internal static class ViewportCommandService
             message = "修改标注比例失败：" + ex.Message;
             return false;
         }
-    }
-
-    private static bool TryApplyLayoutViewportScale(
-        Document doc,
-        Database db,
-        AnnotationScaleListItem selectedScale,
-        out bool scaleChanged,
-        out string scaleDisplayText,
-        out string message)
-    {
-        scaleChanged = false;
-        scaleDisplayText = GetScaleDisplayText(selectedScale);
-        message = "";
-
-        if (!TryGetViewportCustomScale(selectedScale, out var targetCustomScale))
-        {
-            message = $"无效比例：{selectedScale.Name}。";
-            return false;
-        }
-
-        const double tolerance = 1e-9;
-        var previewData = CadDatabaseScope.Read(
-            db,
-            (database, tr) =>
-            {
-                if (!TryResolveLayoutViewportIdForScaleChange(tr, doc, database, out var resolvedViewportId, out var resolveMessage))
-                {
-                    return (
-                        Success: false,
-                        ViewportId: ObjectId.Null,
-                        NeedsViewportScaleChange: false,
-                        TargetIsCurrentFloatingViewport: false,
-                        ErrorMessage: resolveMessage);
-                }
-
-                if (!CadDatabaseScope.TryOpenAs<Viewport>(tr, resolvedViewportId, OpenMode.ForRead, out var previewViewport) ||
-                    previewViewport == null ||
-                    previewViewport.Number == 1)
-                {
-                    return (
-                        Success: false,
-                        ViewportId: ObjectId.Null,
-                        NeedsViewportScaleChange: false,
-                        TargetIsCurrentFloatingViewport: false,
-                        ErrorMessage: "未找到可用的布局视口。");
-                }
-
-                var isCurrentFloatingViewport =
-                    TryGetCurrentFloatingViewportId(doc, out var currentViewportId) &&
-                    currentViewportId == resolvedViewportId;
-
-                return (
-                    Success: true,
-                    ViewportId: resolvedViewportId,
-                    NeedsViewportScaleChange: Math.Abs(previewViewport.CustomScale - targetCustomScale) > tolerance,
-                    TargetIsCurrentFloatingViewport: isCurrentFloatingViewport,
-                    ErrorMessage: "");
-            });
-
-        if (!previewData.Success)
-        {
-            message = previewData.ErrorMessage;
-            return false;
-        }
-
-        var viewportId = previewData.ViewportId;
-        var needsViewportScaleChange = previewData.NeedsViewportScaleChange;
-        var targetIsCurrentFloatingViewport = previewData.TargetIsCurrentFloatingViewport;
-
-        if (targetIsCurrentFloatingViewport && needsViewportScaleChange)
-        {
-            try
-            {
-                doc.Editor.SwitchToPaperSpace();
-            }
-            catch (InvalidOperationException ex)
-            {
-                C_toolsDiagnostics.LogNonFatal("F_DE 切换到视口外后修改比例失败（无效操作）", ex);
-                message = "当前在视口内，无法安全切换比例：" + ex.Message;
-                return false;
-            }
-            catch (Autodesk.AutoCAD.Runtime.Exception ex)
-            {
-                C_toolsDiagnostics.LogNonFatal("F_DE 切换到视口外后修改比例失败（CAD）", ex);
-                message = "当前在视口内，无法安全切换比例：" + ex.Message;
-                return false;
-            }
-        }
-
-        var initialScaleDisplayText = scaleDisplayText;
-        var writeResult = CadDatabaseScope.Write(
-            db,
-            (_, tr) =>
-            {
-                if (!CadDatabaseScope.TryOpenAs<Viewport>(tr, viewportId, OpenMode.ForWrite, out var viewport) ||
-                    viewport == null ||
-                    viewport.Number == 1)
-                {
-                    return (
-                        Success: false,
-                        ScaleChanged: false,
-                        ResolvedScaleDisplayText: initialScaleDisplayText,
-                        ErrorMessage: "未找到可用的布局视口。");
-                }
-
-                var changed = Math.Abs(viewport.CustomScale - targetCustomScale) > tolerance;
-                if (changed)
-                {
-                    var restoreLocked = viewport.Locked;
-                    if (restoreLocked)
-                        viewport.Locked = false;
-
-                    viewport.CustomScale = targetCustomScale;
-
-                    if (restoreLocked)
-                        viewport.Locked = true;
-                }
-
-                var resolvedScaleDisplayText = initialScaleDisplayText;
-                if (string.IsNullOrWhiteSpace(resolvedScaleDisplayText))
-                {
-                    var ratioText = FormatViewportScaleRatio(targetCustomScale);
-                    resolvedScaleDisplayText = string.IsNullOrWhiteSpace(ratioText)
-                        ? selectedScale.Name
-                        : ratioText;
-                }
-
-                return (
-                    Success: true,
-                    ScaleChanged: changed,
-                    ResolvedScaleDisplayText: resolvedScaleDisplayText,
-                    ErrorMessage: "");
-            });
-
-        if (!writeResult.Success)
-        {
-            message = writeResult.ErrorMessage;
-            return false;
-        }
-
-        scaleChanged = writeResult.ScaleChanged;
-        scaleDisplayText = writeResult.ResolvedScaleDisplayText;
-        return true;
     }
 
     private static bool TryGetViewportCustomScale(AnnotationScaleListItem selectedScale, out double customScale)
@@ -1371,6 +1193,17 @@ internal static class ViewportCommandService
         return names;
     }
 
+    private static string ReadCurrentDimStyleName(Transaction tr, Database db)
+    {
+        if (db.Dimstyle.IsNull)
+            return "";
+
+        return CadDatabaseScope.TryOpenAs<DimStyleTableRecord>(tr, db.Dimstyle, OpenMode.ForRead, out var record) &&
+               record != null
+            ? record.Name ?? ""
+            : "";
+    }
+
     private static int CompareAnnotationScaleItem(AnnotationScaleListItem left, AnnotationScaleListItem right)
     {
         var leftValid = !double.IsNaN(left.ScaleRatio) && !double.IsInfinity(left.ScaleRatio);
@@ -1516,84 +1349,6 @@ internal static class ViewportCommandService
 
         viewportId = result.ObjectId;
         return !viewportId.IsNull;
-    }
-
-    private static bool TryResolveLayoutViewportIdForScaleChange(
-        Transaction tr,
-        Document doc,
-        Database db,
-        out ObjectId viewportId,
-        out string message)
-    {
-        viewportId = ObjectId.Null;
-        message = "";
-
-        if (TryGetCurrentFloatingViewportId(doc, out viewportId))
-            return true;
-
-        if (TryGetSingleImpliedViewportId(doc, out var impliedViewportId))
-        {
-            var impliedViewport = tr.GetObject(impliedViewportId, OpenMode.ForRead, false) as Viewport;
-            if (impliedViewport != null && impliedViewport.Number != 1)
-            {
-                viewportId = impliedViewportId;
-                return true;
-            }
-        }
-
-        if (TryGetSingleLayoutViewportId(tr, db, out var singleViewportId))
-        {
-            viewportId = singleViewportId;
-            return true;
-        }
-
-        message = "当前在视口外（纸空间），请先选中一个目标视口后再切换比例。";
-        return false;
-    }
-
-    private static bool TryGetSingleImpliedViewportId(Document doc, out ObjectId viewportId)
-    {
-        viewportId = ObjectId.Null;
-        var implied = doc.Editor.SelectImplied();
-        if (implied.Status != PromptStatus.OK || implied.Value == null)
-            return false;
-
-        var ids = new HashSet<ObjectId>();
-        AddSelectionIds(implied.Value, ids);
-        if (ids.Count != 1)
-            return false;
-
-        viewportId = ids.First();
-        return !viewportId.IsNull;
-    }
-
-    private static bool TryGetSingleLayoutViewportId(Transaction tr, Database db, out ObjectId viewportId)
-    {
-        viewportId = ObjectId.Null;
-        if (db.TileMode)
-            return false;
-
-        var currentSpace = tr.GetObject(db.CurrentSpaceId, OpenMode.ForRead, false) as BlockTableRecord;
-        if (currentSpace == null)
-            return false;
-
-        var matchedCount = 0;
-        foreach (ObjectId id in currentSpace)
-        {
-            if (!string.Equals(id.ObjectClass?.DxfName, "VIEWPORT", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var viewport = tr.GetObject(id, OpenMode.ForRead, false) as Viewport;
-            if (viewport == null || viewport.Number == 1)
-                continue;
-
-            matchedCount++;
-            viewportId = id;
-            if (matchedCount > 1)
-                return false;
-        }
-
-        return matchedCount == 1 && !viewportId.IsNull;
     }
 
     private static List<ObjectId> CollectTargetViewportIds(Document doc, string promptMessage)

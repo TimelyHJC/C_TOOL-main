@@ -84,7 +84,6 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             UpdateFrameSelectionHeader();
         };
 
-        _savedSheetSetTabs.Add(new SavedSheetSetTabInfo { DisplayName = "当前", IsWorkingSet = true });
         UpdateSavedSheetSetTabsVisibility();
 
         InitializeStaticOptions();
@@ -108,6 +107,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         RefreshOutputFolderSuggestions(_suggestedOutputFolder);
         if (_outputFolders.Count > 0)
             OutputFolderCombo.SelectedItem = _outputFolders[0];
+        RefreshCadPlotResourcePaths();
 
         LoadRecognitionTemplates();
         RefreshSavedSheetSetTabs();
@@ -176,25 +176,6 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
 
         LoadRecognitionTemplatesForCurrentMode(isInitialLoad: false);
         PersistRecognitionTemplatesForCurrentMode();
-    }
-
-    // ── Scope (layout / model / all) ─────────────────────────────────────────
-
-    private void Scope_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!IsLoaded)
-            return;
-
-        var scopeText = GetScopeText();
-        if (GetSelectedTemplateNames().Count > 0)
-        {
-            UpdateStatus(
-                $"已切换识别范围：{scopeText}。",
-                "提示：点击刷新重新读取图纸，或点击 ○ 选择图块、点击 □ 框选窗口手动追加图纸。");
-            return;
-        }
-
-        UpdateStatus($"已切换识别范围：{scopeText}。");
     }
 
     // ── Template list (识别方式上方的图块/图层列表) ──────────────────────────
@@ -274,25 +255,13 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
     {
         FlushPendingFrameListPersist(showStatusOnError: true);
 
-        if (_frames.Count == 0)
-        {
-            UpdateStatus("当前图纸列表为空，无法生成 TAD 标签。");
-            return;
-        }
-
         var documentPath = GetCurrentDocumentName();
-        if (string.IsNullOrWhiteSpace(documentPath))
-        {
-            UpdateStatus("当前没有活动图纸，无法保存 TAD 标签。");
-            return;
-        }
-
         var definitions = BuildSavedSheetSetDefinitionsFromTabs();
         var nextName = CreateNextSavedSheetSetName(definitions);
         var nextDefinition = new QqqSavedSheetSetDefinition
         {
             Name = nextName,
-            Frames = _frames.Select(CloneFrameInfo).ToList()
+            Frames = new List<FrameInfo>()
         };
         QqqSavedSheetSetStore.CaptureTextSnapshots(nextDefinition);
         definitions.Add(nextDefinition);
@@ -304,9 +273,16 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         }
 
         RefreshSavedSheetSetTabs(selectTabName: nextName);
+        if (SavedSheetSetTabs.SelectedItem is SavedSheetSetTabInfo { Definition: not null } selectedTab &&
+            string.Equals(selectedTab.DisplayName, nextName, StringComparison.OrdinalIgnoreCase))
+        {
+            _frames.ReplaceAll(selectedTab.Definition.Frames.Select(CloneFrameInfo));
+            UpdateFrameSelectionHeader();
+        }
+
         UpdateStatus(
-            $"已保存 TAD 标签“{nextName}”。",
-            $"已记录 {_frames.Count} 张图纸，并打包 DD/F_ED 文字记录；下次切换此标签可一并恢复。");
+            $"已新建 TAD 标签“{nextName}”。",
+            "提示：该标签暂未记录图纸；添加图纸后会自动保存到该 TAD 标签。");
     }
 
     private void SavedSheetSetTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -413,6 +389,57 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             _outputFolders.Insert(0, dialog.SelectedPath);
     }
 
+    private void OpenOutputFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (OutputFolderCombo.IsEditable)
+            EndOutputFolderEdit(commitChanges: true);
+
+        var outputFolder = (OutputFolderCombo.SelectedItem as string ?? OutputFolderCombo.Text ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(outputFolder))
+        {
+            UpdateStatus("输出目录为空，无法打开。");
+            return;
+        }
+
+        if (!Directory.Exists(outputFolder))
+        {
+            UpdateStatus($"输出目录不存在：{outputFolder}");
+            return;
+        }
+
+        OpenOutputFolder(outputFolder);
+        UpdateStatus("已打开输出目录。", $"路径：{outputFolder}");
+    }
+
+    private void OpenPrinterConfigFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenConfiguredFolder(PrinterConfigPathTextBox.Text, "打印机配置目录");
+    }
+
+    private void OpenPlotStyleFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenConfiguredFolder(PlotStylePathTextBox.Text, "打印样式表目录");
+    }
+
+    private void OpenConfiguredFolder(string? folderPath, string label)
+    {
+        var path = (folderPath ?? "").Trim();
+        if (path.Length == 0)
+        {
+            UpdateStatus($"{label}为空，无法打开。");
+            return;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            UpdateStatus($"{label}不存在：{path}");
+            return;
+        }
+
+        OpenOutputFolder(path);
+        UpdateStatus($"已打开{label}。", $"路径：{path}");
+    }
+
     private void OutputFolderCombo_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         BeginOutputFolderEdit();
@@ -472,7 +499,8 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
 
     private void PreviewButton_Click(object sender, RoutedEventArgs e)
     {
-        var selectedFrames = GetSelectedFramesInListOrder();
+        var previewOptions = BuildPlotOptions();
+        var selectedFrames = GetSelectedFramesInPlotOrder(previewOptions);
         if (selectedFrames.Count == 0)
         {
             UpdateStatus("请先勾选并读取图纸。");
@@ -490,8 +518,9 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             document,
             selectedFrames[0],
             selectedFrames.Count > 1
-                ? "提示：当前预览定位到图纸列表首个勾选图纸。"
-                : "提示：关闭预览后，会自动返回当前批量打印面板。");
+                ? "提示：当前预览定位到打印顺序中的首个勾选图纸。"
+                : "提示：关闭预览后，会自动返回当前批量打印面板。",
+            previewOptions);
     }
 
     private void FramePreviewButton_Click(object sender, RoutedEventArgs e)
@@ -527,7 +556,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         if (_isPrinting)
             return;
 
-        var selectedFrames = GetSelectedFramesInListOrder();
+        var selectedFrames = GetSelectedFramesInPlotOrder(BuildPlotOptions());
         if (selectedFrames.Count == 0)
         {
             UpdateStatus("请先勾选并读取图纸。");
@@ -593,10 +622,10 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         }
     }
 
-    private void PreviewFrame(Document document, FrameInfo previewFrame, string closingHint)
+    private void PreviewFrame(Document document, FrameInfo previewFrame, string closingHint, QqqPlotOptions? previewOptions = null)
     {
         QqqPlotService.ClearFrameRangeDisplay();
-        var previewOptions = BuildPlotOptions();
+        previewOptions ??= BuildPlotOptions();
 
         try
         {
@@ -738,7 +767,11 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             return;
         }
 
-        var selectedFrames = _frames.Where(x => x.IsSelected).ToList();
+        var options = BuildPlotOptions();
+        if (string.IsNullOrWhiteSpace(options.OutputFolder))
+            options.OutputFolder = _suggestedOutputFolder;
+
+        var selectedFrames = GetSelectedFramesInPlotOrder(options);
         if (selectedFrames.Count == 0)
         {
             UpdateStatus("没有可打印的图纸，请先在上方识别列表勾选并读取图纸。");
@@ -751,12 +784,6 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             UpdateStatus("当前没有活动图纸。");
             return;
         }
-
-        var options = BuildPlotOptions();
-        if (string.IsNullOrWhiteSpace(options.OutputFolder))
-            options.OutputFolder = _suggestedOutputFolder;
-
-        selectedFrames = QqqPlotService.SortFrames(selectedFrames, options.SortRule).ToList();
 
         _printCancellation?.Dispose();
         _printCancellation = new CancellationTokenSource();
@@ -1002,7 +1029,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
                         ? "请先从 CAD 记录识别项。"
                         : "请先在上方识别列表勾选需要读取的项。",
                     BuildSheetListHint(
-                        "提示：勾选后，系统会读取当前范围内对应的图纸信息。",
+                        "提示：勾选后，系统会读取当前图纸中对应的图纸信息。",
                         persistErrorMessage));
             }
 
@@ -1021,8 +1048,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
 
         var requestVersion = Interlocked.Increment(ref _sheetRefreshVersion);
         var isBlockMode = IsBlockRecognitionMode();
-        var scope = GetRecognitionScope();
-        UpdateStatus($"正在读取 {selectedNames.Count} 项对应的图纸信息…", $"范围：{GetScopeText()}");
+        UpdateStatus($"正在读取 {selectedNames.Count} 项对应的图纸信息…", "提示：会读取当前图纸中符合勾选项的图纸。");
 
         try
         {
@@ -1033,8 +1059,8 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
                     var result = activeDocument == null
                         ? new QqqFrameSelectionResult { Message = "当前没有活动图纸。" }
                         : isBlockMode
-                            ? QqqFrameSelectionService.RecognizeFramesByBlockNames(activeDocument, selectedNames, scope)
-                            : QqqFrameSelectionService.RecognizeFramesByLayerNames(activeDocument, selectedNames, scope);
+                            ? QqqFrameSelectionService.RecognizeFramesByBlockNames(activeDocument, selectedNames)
+                            : QqqFrameSelectionService.RecognizeFramesByLayerNames(activeDocument, selectedNames);
 
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
@@ -1064,8 +1090,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             persistErrorMessage = PersistDisplayedFrames();
         else
         {
-            SelectWorkingSheetSetTab();
-            persistErrorMessage = PersistWorkingFrames();
+            persistErrorMessage = PersistDisplayedFrames();
         }
 
         UpdateFrameSelectionHeader();
@@ -1075,7 +1100,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             UpdateStatus(
                 result.Message,
                 BuildSheetListHint(
-                    "提示：确认上方勾选的图框图块或图框图层在当前识别范围内确实存在。",
+                    "提示：确认上方勾选的图框图块或图框图层在当前图纸中确实存在。",
                     persistErrorMessage));
             return;
         }
@@ -1083,14 +1108,13 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         UpdateStatus(
             result.Message,
             BuildSheetListHint(
-                "提示：下方图纸来自上方勾选项；预览和开始打印会按图纸列表勾选项执行。",
+                "提示：下方图纸来自上方勾选项；预览和开始打印会按打印顺序执行。",
                 persistErrorMessage));
     }
 
     private void AppendCapturedFrames(QqqFrameSelectionResult result)
     {
         QqqPlotService.ClearFrameRangeDisplay();
-        SelectWorkingSheetSetTab();
 
         if (result.Frames.Count == 0)
         {
@@ -1139,8 +1163,8 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         UpdateStatus(
             mergeMessage,
             BuildSheetListHint(
-                $"提示：当前图纸列表共 {_frames.Count} 张图纸；预览和开始打印会按图纸列表勾选项执行。",
-                PersistWorkingFrames()));
+                $"提示：当前图纸列表共 {_frames.Count} 张图纸；预览和开始打印会按打印顺序执行。",
+                PersistDisplayedFrames()));
     }
 
     private void FrameSelectionChanged(object sender, RoutedEventArgs e)
@@ -1390,53 +1414,24 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         return QqqRecognitionTemplateStore.ModeLayer;
     }
 
-    private QqqRecognitionScope GetRecognitionScope()
-    {
-        if (ScopeModelRadio.IsChecked == true)
-            return QqqRecognitionScope.Model;
-        if (ScopeAllRadio.IsChecked == true)
-            return QqqRecognitionScope.All;
-
-        return QqqRecognitionScope.Layout;
-    }
-
-    private string GetScopeText()
-    {
-        return ScopeLayoutRadio.IsChecked == true
-            ? "布局空间"
-            : ScopeModelRadio.IsChecked == true
-                ? "模型空间"
-                : "全部空间";
-    }
-
     private void ClearTemplatesAndSheets()
     {
         _templates.ReplaceAll(Array.Empty<FrameTemplateInfo>());
         _frames.ReplaceAll(Array.Empty<FrameInfo>());
-        SelectWorkingSheetSetTab();
-        PersistWorkingFrames();
+        PersistDisplayedFrames();
     }
 
     private void RefreshSavedSheetSetTabs(string? selectTabName = null)
     {
         var documentPath = GetCurrentDocumentName();
-        var definitions = string.IsNullOrWhiteSpace(documentPath)
-            ? Array.Empty<QqqSavedSheetSetDefinition>()
-            : QqqSavedSheetSetStore.Load(documentPath);
+        var definitions = QqqSavedSheetSetStore.Load(documentPath);
 
         _isUpdatingSavedSheetSetTabs = true;
         try
         {
-            var tabs = new List<SavedSheetSetTabInfo>
-            {
-                new()
-                {
-                    DisplayName = "当前",
-                    IsWorkingSet = true
-                }
-            };
+            var tabs = new List<SavedSheetSetTabInfo>();
 
-            foreach (var definition in definitions.OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase))
+            foreach (var definition in definitions)
             {
                 tabs.Add(new SavedSheetSetTabInfo
                 {
@@ -1457,7 +1452,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
 
             UpdateSavedSheetSetTabsVisibility();
 
-            var selectedIndex = 0;
+            var selectedIndex = _savedSheetSetTabs.Count > 0 ? 0 : -1;
             if (!string.IsNullOrWhiteSpace(selectTabName))
             {
                 var matched = _savedSheetSetTabs
@@ -1480,20 +1475,20 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         if (SavedSheetSetTabs == null)
             return;
 
-        SavedSheetSetTabs.Visibility = _savedSheetSetTabs.Count > 1
+        SavedSheetSetTabs.Visibility = _savedSheetSetTabs.Count > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
 
-    private void SelectWorkingSheetSetTab()
+    private void SelectDefaultSheetSetTab()
     {
-        if (SavedSheetSetTabs == null || _savedSheetSetTabs.Count == 0)
+        if (SavedSheetSetTabs == null)
             return;
 
         _isUpdatingSavedSheetSetTabs = true;
         try
         {
-            SavedSheetSetTabs.SelectedIndex = 0;
+            SavedSheetSetTabs.SelectedIndex = _savedSheetSetTabs.Count > 0 ? 0 : -1;
         }
         finally
         {
@@ -1504,7 +1499,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
     private void RestoreWorkingFramesForCurrentDocument()
     {
         QqqPlotService.ClearFrameRangeDisplay();
-        SelectWorkingSheetSetTab();
+        SelectDefaultSheetSetTab();
         _frames.ReplaceAll(Array.Empty<FrameInfo>());
 
         var documentPath = GetCurrentDocumentName();
@@ -1517,7 +1512,8 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             return;
         }
 
-        var restoredFrames = QqqSavedSheetSetStore.LoadWorkingSet(documentPath)
+        var selectedDefinition = (SavedSheetSetTabs.SelectedItem as SavedSheetSetTabInfo)?.Definition;
+        var restoredFrames = (selectedDefinition?.Frames ?? Enumerable.Empty<FrameInfo>())
             .Select(CloneFrameInfo)
             .ToList();
         _frames.ReplaceAll(restoredFrames);
@@ -1528,7 +1524,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         {
             UpdateStatus(
                 $"已恢复上次图纸列表，共 {_frames.Count} 张图纸。",
-                "提示：预览和显示范围按当前列表顺序定位；开始打印时才按打印顺序输出。");
+                "提示：预览、显示范围和开始打印都会按 V_YYY“打印与保存”中的打印顺序执行。");
             return;
         }
 
@@ -1588,7 +1584,10 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         if (SavedSheetSetTabs?.SelectedItem is SavedSheetSetTabInfo { IsWorkingSet: false, Definition: not null } tab)
             return CreateSavedSheetSetFrameListPersistRequest(tab);
 
-        return CreateWorkingFrameListPersistRequest();
+        var firstTab = _savedSheetSetTabs.FirstOrDefault(static x => x.Definition != null);
+        return firstTab != null
+            ? CreateSavedSheetSetFrameListPersistRequest(firstTab)
+            : CreateWorkingFrameListPersistRequest();
     }
 
     private FrameListPersistRequest CreateWorkingFrameListPersistRequest()
@@ -1622,11 +1621,9 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
 
     private static string PersistFrameListRequest(FrameListPersistRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.DocumentPath))
+        if (string.IsNullOrWhiteSpace(request.DocumentPath) && request.TargetKind != FrameListPersistTargetKind.SavedSheetSet)
         {
-            return request.TargetKind == FrameListPersistTargetKind.SavedSheetSet
-                ? $"提示：当前没有活动图纸，未能保存 TAD 标签“{request.SavedSheetSetName}”的图纸列表变更。"
-                : "提示：当前没有活动图纸，未能保存 V_QQQ 当前图纸列表。";
+            return "提示：当前没有活动图纸，未能保存 V_QQQ 当前图纸列表。";
         }
 
         if (request.TargetKind == FrameListPersistTargetKind.SavedSheetSet)
@@ -1714,13 +1711,6 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         }
 
         var documentPath = GetCurrentDocumentName();
-        if (string.IsNullOrWhiteSpace(documentPath))
-        {
-            tab.EditName = originalName;
-            UpdateStatus("当前没有活动图纸，无法重命名 TAD 标签。");
-            return;
-        }
-
         tab.DisplayName = renamed;
         tab.Definition.Name = renamed;
         tab.EditName = renamed;
@@ -2254,6 +2244,59 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             OutputFolderCombo.SelectedItem = _outputFolders[0];
     }
 
+    private void RefreshCadPlotResourcePaths()
+    {
+        PrinterConfigPathTextBox.Text = TryReadPrinterConfigPath();
+        PlotStylePathTextBox.Text = TryReadPlotStylePath();
+    }
+
+    private static string TryReadPrinterConfigPath()
+    {
+        try
+        {
+            dynamic files = ((dynamic)AcAp.AcadApplication).Preferences.Files;
+            string? path = files.PrinterConfigPath;
+            return (path ?? "").Trim();
+        }
+        catch (Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_QQQ 读取打印机配置目录失败", ex);
+            return "";
+        }
+    }
+
+    private static string TryReadPlotStylePath()
+    {
+        try
+        {
+            dynamic files = ((dynamic)AcAp.AcadApplication).Preferences.Files;
+            var path = "";
+
+            try
+            {
+                string? printerStyleSheetPath = files.PrinterStyleSheetPath;
+                path = printerStyleSheetPath ?? "";
+            }
+            catch
+            {
+                // Older AutoCAD-compatible hosts can expose the plot style folder under PrintStylePath.
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                string? printStylePath = files.PrintStylePath;
+                path = printStylePath ?? "";
+            }
+
+            return path.Trim();
+        }
+        catch (Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_QQQ 读取打印样式表目录失败", ex);
+            return "";
+        }
+    }
+
     private void SetPrintingState(bool isPrinting)
     {
         _isPrinting = isPrinting;
@@ -2264,11 +2307,13 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         AddWindowSheetsButton.IsEnabled = !isPrinting;
     }
 
-    private List<FrameInfo> GetSelectedFramesInListOrder()
+    private List<FrameInfo> GetSelectedFramesInPlotOrder(QqqPlotOptions options)
     {
-        return _frames
+        var selectedFrames = _frames
             .Where(static x => x.IsSelected)
             .ToList();
+
+        return QqqPlotService.SortFrames(selectedFrames, options.SortRule).ToList();
     }
 
     private void EnsureShown()

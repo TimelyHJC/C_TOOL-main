@@ -82,9 +82,7 @@ internal static class DddTextMatchService
         if (result.Status != PromptStatus.OK || result.ObjectId.IsNull)
             return false;
 
-        using var transaction = doc.TransactionManager.StartTransaction();
-        var dbObject = transaction.GetObject(result.ObjectId, OpenMode.ForRead, false);
-        if (!TryReadEditableText(dbObject, out sourceText))
+        if (!DddReadableTextService.TryReadTextFromId(doc, result.ObjectId, out sourceText))
         {
             doc.Editor.WriteMessage($"\nC_TOOL：{CommandName} 来源对象没有可读取的文字内容。");
             return false;

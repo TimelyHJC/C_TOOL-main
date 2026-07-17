@@ -57,11 +57,11 @@ internal static class DddLinearDimensionService
         }
     }
 
-    internal static void ContinueAfterNativeLinearDimension(Document doc)
+    internal static bool ContinueAfterNativeLinearDimension(Document doc)
     {
         var key = GetDocumentKey(doc);
         if (!PendingSessions.TryRemove(key, out var session))
-            return;
+            return false;
 
         try
         {
@@ -69,13 +69,13 @@ internal static class DddLinearDimensionService
             {
                 if (!string.IsNullOrWhiteSpace(error))
                     doc.Editor.WriteMessage($"\nC_TOOL：{error}");
-                return;
+                return true;
             }
 
             if (!TryReadInitialDimensionState(doc, initialDimensionId, out var firstPoint, out var secondPoint, out var orientation, out var dimLineOrdinate, out error))
             {
                 doc.Editor.WriteMessage($"\nC_TOOL：{error}");
-                return;
+                return true;
             }
 
             if (!TryApplyChainTextAvoidance(
@@ -93,6 +93,7 @@ internal static class DddLinearDimensionService
             var points = SortPoints(new List<Point3d> { firstPoint, secondPoint }, orientation);
             var dimensionIds = new List<ObjectId> { initialDimensionId };
             ContinueChain(doc, points, dimensionIds, orientation, dimLineOrdinate);
+            return true;
         }
         finally
         {
@@ -1182,7 +1183,7 @@ internal static class DddLinearDimensionService
         double dimLineOrdinate,
         out string error)
     {
-        return DddDimensionChainTextAvoidanceService.TryApplyLinearChain(
+        return DddDimensionTextAvoidanceService.TryApplyLinearChain(
             doc,
             points,
             dimensionIds,

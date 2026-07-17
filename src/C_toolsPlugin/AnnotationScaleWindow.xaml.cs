@@ -18,6 +18,8 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
     private readonly ObservableCollection<AnnotationScaleListItem> _normalScales = new();
     private readonly ObservableCollection<AnnotationScaleListItem> _innerScales = new();
     private List<AnnotationScaleListItem> _allScales = new();
+    private string _currentScaleName = "";
+    private bool? _currentPrefersInnerDimStyle;
     private bool _isApplyingScale;
     private bool _isRefreshing;
     private bool _refreshPending;
@@ -199,11 +201,13 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
     private void ApplySnapshot(AnnotationScaleSnapshot snapshot, string message)
     {
         _allScales = new List<AnnotationScaleListItem>(snapshot.AllScales);
+        _currentScaleName = snapshot.CurrentScaleName;
+        _currentPrefersInnerDimStyle = snapshot.CurrentPrefersInnerDimStyle;
         CurrentScaleText.Text = string.IsNullOrWhiteSpace(snapshot.CurrentScaleName)
             ? "（未设置）"
             : GetScaleDisplayText(snapshot.CurrentScaleName);
 
-        RefreshGroupList(snapshot.Groups, snapshot.CurrentScaleName);
+        RefreshGroupList(snapshot.Groups, snapshot.CurrentScaleName, snapshot.CurrentGroupPrefix, _currentPrefersInnerDimStyle);
         UpdateControlState();
         SetStatus(message);
     }
@@ -217,12 +221,15 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
 
     private void RefreshGroupList(
         IReadOnlyList<AnnotationScaleGroupInfo> sourceGroups,
-        string currentScaleName)
+        string currentScaleName,
+        string? currentGroupPrefix,
+        bool? currentPrefersInnerDimStyle)
     {
         var previousPrefix = AnnotationScaleGrouping.NormalizeGroupPrefix(
             (GroupCombo.SelectedItem as AnnotationScaleGroupInfo)?.Prefix);
         var configuredPrefix = ResolveConfiguredGroupPrefix();
         var savedPrefix = AnnotationScaleGrouping.NormalizeGroupPrefix(AnnotationScaleLastGroupStore.TryGetPrefix());
+        var normalizedCurrentPrefix = AnnotationScaleGrouping.NormalizeGroupPrefix(currentGroupPrefix);
 
         _suppressGroupSelectionChanged = true;
         try
@@ -234,17 +241,18 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
             if (_groups.Count == 0)
             {
                 GroupCombo.SelectedItem = null;
-                RefreshScaleLists(null, currentScaleName);
+                RefreshScaleLists(null, currentScaleName, currentPrefersInnerDimStyle);
                 return;
             }
 
-            var selectedGroup = FindGroup(previousPrefix)
+            var selectedGroup = FindGroup(normalizedCurrentPrefix)
+                                ?? FindGroupContainingScale(currentScaleName, currentPrefersInnerDimStyle)
+                                ?? FindGroup(previousPrefix)
                                 ?? FindGroup(configuredPrefix)
                                 ?? FindGroup(savedPrefix)
-                                ?? FindGroupContainingScale(currentScaleName)
                                 ?? _groups[0];
             GroupCombo.SelectedItem = selectedGroup;
-            RefreshScaleLists(selectedGroup, currentScaleName);
+            RefreshScaleLists(selectedGroup, currentScaleName, currentPrefersInnerDimStyle);
         }
         finally
         {
@@ -285,20 +293,22 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
         return null;
     }
 
-    private AnnotationScaleGroupInfo? FindGroupContainingScale(string? scaleName)
+    private AnnotationScaleGroupInfo? FindGroupContainingScale(string? scaleName, bool? preferInnerDimStyle)
     {
         if (string.IsNullOrWhiteSpace(scaleName))
             return null;
 
         foreach (var group in _groups)
         {
-            foreach (var item in group.NormalScales)
+            var primary = preferInnerDimStyle == true ? group.InnerScales : group.NormalScales;
+            var secondary = preferInnerDimStyle == true ? group.NormalScales : group.InnerScales;
+            foreach (var item in primary)
             {
                 if (item.MatchesScale(scaleName))
                     return group;
             }
 
-            foreach (var item in group.InnerScales)
+            foreach (var item in secondary)
             {
                 if (item.MatchesScale(scaleName))
                     return group;
@@ -308,7 +318,10 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
         return null;
     }
 
-    private void RefreshScaleLists(AnnotationScaleGroupInfo? group, string? selectedScaleName)
+    private void RefreshScaleLists(
+        AnnotationScaleGroupInfo? group,
+        string? selectedScaleName,
+        bool? preferInnerDimStyle)
     {
         _suppressScaleSelectionChanged = true;
         try
@@ -324,7 +337,7 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
                     _innerScales.Add(item);
             }
 
-            SelectScale(selectedScaleName);
+            SelectScale(selectedScaleName, preferInnerDimStyle);
             UpdateColumnHeaders();
             UpdateControlState();
         }
@@ -340,7 +353,7 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
         InnerScaleHeaderText.Text = $"内尺寸标注（{_innerScales.Count}）";
     }
 
-    private void SelectScale(string? scaleName)
+    private void SelectScale(string? scaleName, bool? preferInnerDimStyle)
     {
         _suppressScaleSelectionChanged = true;
         try
@@ -352,26 +365,29 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
                 return;
             }
 
-            foreach (var normalScale in _normalScales)
+            var normalizedScaleName = (scaleName ?? "").Trim();
+            if (preferInnerDimStyle == true && TrySelectScale(InnerScaleList, _innerScales, normalizedScaleName))
             {
-                if (normalScale.MatchesScale(scaleName))
-                {
-                    NormalScaleList.SelectedItem = normalScale;
-                    InnerScaleList.SelectedItem = null;
-                    NormalScaleList.ScrollIntoView(normalScale);
-                    return;
-                }
+                NormalScaleList.SelectedItem = null;
+                return;
             }
 
-            foreach (var innerScale in _innerScales)
+            if (preferInnerDimStyle != true && TrySelectScale(NormalScaleList, _normalScales, normalizedScaleName))
             {
-                if (innerScale.MatchesScale(scaleName))
-                {
-                    InnerScaleList.SelectedItem = innerScale;
-                    NormalScaleList.SelectedItem = null;
-                    InnerScaleList.ScrollIntoView(innerScale);
-                    return;
-                }
+                InnerScaleList.SelectedItem = null;
+                return;
+            }
+
+            if (preferInnerDimStyle == true && TrySelectScale(NormalScaleList, _normalScales, normalizedScaleName))
+            {
+                InnerScaleList.SelectedItem = null;
+                return;
+            }
+
+            if (preferInnerDimStyle != true && TrySelectScale(InnerScaleList, _innerScales, normalizedScaleName))
+            {
+                NormalScaleList.SelectedItem = null;
+                return;
             }
 
             NormalScaleList.SelectedItem = null;
@@ -383,6 +399,24 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
         }
     }
 
+    private static bool TrySelectScale(
+        ListBox list,
+        IEnumerable<AnnotationScaleListItem> scales,
+        string scaleName)
+    {
+        foreach (var scale in scales)
+        {
+            if (!scale.MatchesScale(scaleName))
+                continue;
+
+            list.SelectedItem = scale;
+            list.ScrollIntoView(scale);
+            return true;
+        }
+
+        return false;
+    }
+
     private void GroupCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressGroupSelectionChanged)
@@ -391,7 +425,7 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
         if (GroupCombo.SelectedItem is AnnotationScaleGroupInfo group)
             AnnotationScaleLastGroupStore.Save(group.Prefix);
 
-        RefreshScaleLists(GroupCombo.SelectedItem as AnnotationScaleGroupInfo, CurrentScaleText.Text);
+        RefreshScaleLists(GroupCombo.SelectedItem as AnnotationScaleGroupInfo, _currentScaleName, _currentPrefersInnerDimStyle);
     }
 
     private void NormalScaleList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -490,8 +524,10 @@ public partial class AnnotationScaleWindow : Window, IModelessWindowPlacement, I
                             var shouldClose = ok && closeOnSuccess;
                             if (ok)
                             {
+                                _currentScaleName = appliedScaleName;
+                                _currentPrefersInnerDimStyle = preferInnerDimStyle;
                                 CurrentScaleText.Text = GetScaleDisplayText(appliedScaleName);
-                                SelectScale(appliedScaleName);
+                                SelectScale(appliedScaleName, preferInnerDimStyle);
                             }
 
                             UpdateControlState();

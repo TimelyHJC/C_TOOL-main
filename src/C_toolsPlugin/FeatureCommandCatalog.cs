@@ -69,7 +69,8 @@ internal static class FeatureCommandCatalog
         VisibleRibbon(C_toolsCommandIds.Ddd.TextEditorFix, "修复编辑器", "辅助修复：将 MTEXTED 与 TEXTED 恢复为 AutoCAD 内置文字编辑器，处理“无法找到 SHELL 程序”", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.TextHistoryEdit, "文字快改", "文字工具：打开窄窗口，自动记录单行/多行文字历史，并将历史文字快速写回当前选中文字", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.TextToMText, "单转多", "文字工具：启动 AutoCAD 原生 TXT2MTXT，将单行文字转换为多行文字", C_toolsCommandIds.Ddd.Main),
-        VisibleRibbon(C_toolsCommandIds.Ddd.TextMatch, "匹配文字", "文字工具：选择来源文字或多重引线文字后，将目标文字/多重引线文字内容匹配为来源内容；支持预选目标", C_toolsCommandIds.Ddd.Main),
+        VisibleRibbon(C_toolsCommandIds.Ddd.TextToLeader, "文字引线", "文字工具：选择单行/多行文字后，按 V_DDD 当前多重引线样式与版式插入多重引线", C_toolsCommandIds.Ddd.Main),
+        VisibleRibbon(C_toolsCommandIds.Ddd.TextMatch, "匹配文字", "文字工具：选择来源文字对象后，将目标文字内容匹配为来源内容；支持预选目标", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.DimShift, "上下快调", "智能标注工具：选中线性/对齐标注、文字、引线或多重引线后，拖拽预览并快速调整位置", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.DimShiftHorizontal, "左右快调", "智能标注工具：选中线性/对齐标注、文字、引线或多重引线后，拖拽预览并左右快速调整位置", C_toolsCommandIds.Ddd.Main),
 

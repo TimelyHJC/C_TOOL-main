@@ -292,7 +292,7 @@ internal static class DddDimensionOuterDimensionService
         if (createdDimensionIds.Count == 0)
             return;
 
-        if (!DddDimensionChainTextAvoidanceService.TryApplyDimensionIds(
+        if (!DddDimensionTextAvoidanceService.TryApplyDimensionIds(
                 doc,
                 new List<ObjectId>(createdDimensionIds),
                 DddPluginCommandIds.DimOuter,

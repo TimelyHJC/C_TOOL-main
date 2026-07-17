@@ -6,6 +6,7 @@
     <RootNamespace>C_toolsSetup</RootNamespace>
     <AssemblyName>C_TOOL_Setup</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <Version>1.0.3</Version>
   </PropertyGroup>
 

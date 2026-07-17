@@ -32,11 +32,11 @@ internal static class DddAlignedDimensionService
         }
     }
 
-    internal static void ContinueAfterNativeAlignedDimension(Document doc)
+    internal static bool ContinueAfterNativeAlignedDimension(Document doc)
     {
         var key = GetDocumentKey(doc);
         if (!PendingSessions.TryRemove(key, out var session))
-            return;
+            return false;
 
         try
         {
@@ -44,13 +44,13 @@ internal static class DddAlignedDimensionService
             {
                 if (!string.IsNullOrWhiteSpace(error))
                     doc.Editor.WriteMessage($"\nC_TOOL：{error}");
-                return;
+                return true;
             }
 
             if (!TryReadInitialDimensionState(doc, initialDimensionId, out var firstPoint, out var secondPoint, out var signedOffset, out error))
             {
                 doc.Editor.WriteMessage($"\nC_TOOL：{error}");
-                return;
+                return true;
             }
 
             var points = SortPoints(new List<Point3d> { firstPoint, secondPoint }, firstPoint, secondPoint - firstPoint);
@@ -59,6 +59,7 @@ internal static class DddAlignedDimensionService
                 WriteAvoidanceFailure(doc, error);
 
             ContinueChain(doc, points, dimensionIds, signedOffset);
+            return true;
         }
         finally
         {
@@ -1082,7 +1083,7 @@ internal static class DddAlignedDimensionService
         double signedOffset,
         out string error)
     {
-        return DddDimensionChainTextAvoidanceService.TryApplyAlignedChain(doc, points, dimensionIds, signedOffset, out error);
+        return DddDimensionTextAvoidanceService.TryApplyAlignedChain(doc, points, dimensionIds, signedOffset, out error);
     }
 
     private static ContinuationPointResult GetContinuationPoint(Editor ed, Point3d basePoint, string message)

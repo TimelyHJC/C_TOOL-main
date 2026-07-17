@@ -416,7 +416,7 @@ internal static class DddDimensionFootAdjustService
 
         var updatedPoints = new List<Point3d>(plan.Points);
         updatedPoints[plan.SharedPointIndex] = movedPoint;
-        if (!DddDimensionChainTextAvoidanceService.TryApplyLinearChain(
+        if (!DddDimensionTextAvoidanceService.TryApplyLinearChain(
                 doc,
                 updatedPoints,
                 plan.DimensionIds,
@@ -493,7 +493,7 @@ internal static class DddDimensionFootAdjustService
 
         var updatedPoints = new List<Point3d>(plan.Points);
         updatedPoints[plan.SharedPointIndex] = movedPoint;
-        if (!DddDimensionChainTextAvoidanceService.TryApplyAlignedChain(
+        if (!DddDimensionTextAvoidanceService.TryApplyAlignedChain(
                 doc,
                 updatedPoints,
                 plan.DimensionIds,

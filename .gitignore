@@ -15,6 +15,7 @@
 /C_TOOL_Setup.runtimeconfig.json
 /C_TOOL_Setup.pdb
 /latest.json
+/dist/
 
 # Test and diagnostics
 TestResults/

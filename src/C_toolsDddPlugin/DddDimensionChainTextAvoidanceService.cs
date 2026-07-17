@@ -5,23 +5,24 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using AcadRuntimeException = Autodesk.AutoCAD.Runtime.Exception;
-using C_toolsShared;
+using C_toolsPlugin;
 
 namespace C_toolsDddPlugin;
 
 internal static class DddDimensionChainTextAvoidanceService
 {
     private const double PointTolerance = 1e-6;
-    private const double PositionComparisonTolerance = 1e-4;
+    private const double LayoutComparisonTolerance = 1e-4;
     private const double ParallelDotTolerance = 0.999;
     private const double EstimatedCharWidthFactor = 0.82;
-    private const double LaneGapByTextHeightFactor = 0.35;
-    private const double LaneGapByDimGapFactor = 2.0;
-    private const double PlacementGapByTextHeightFactor = 0.08;
-    private const double PlacementGapByDimGapFactor = 0.25;
-    private const double AxisShiftLimitByLaneSpacingFactor = 1.5;
-    private const double CircleAllowanceByTextHeightFactor = 1.5;
-    private const int MaxLaneIndex = 2;
+    private const double LaneSpacingFactor = 1.2;
+    private const double HorizontalShiftLimitFactor = 1.25;
+    private const double HorizontalPlacementGapFactor = 0.8;
+    private const double TextBoundsExpansionFactor = 1.5;
+    private const double MinimumTextGapByHeightFactor = 0.6;
+    private const double MinimumTextGapByDimGapFactor = 2.5;
+
+    private delegate LineAnchorBuildResult LineAnchorBuilder(Point3d firstPoint, Point3d secondPoint);
 
     internal static bool TryApplyAlignedChain(
         Document doc,
@@ -30,14 +31,7 @@ internal static class DddDimensionChainTextAvoidanceService
         double signedOffset,
         out string error)
     {
-        return TryApplyRows(
-            doc,
-            dimensionIds,
-            DddPluginCommandIds.DimAligned,
-            preferCurrentPlacement: false,
-            out _,
-            out _,
-            out error);
+        return TryApplyDimensionIds(doc, dimensionIds, DddPluginCommandIds.DimAligned, out _, out _, out error);
     }
 
     internal static bool TryApplyLinearChain(
@@ -48,14 +42,7 @@ internal static class DddDimensionChainTextAvoidanceService
         double dimLineOrdinate,
         out string error)
     {
-        return TryApplyRows(
-            doc,
-            dimensionIds,
-            DddPluginCommandIds.DimLinear,
-            preferCurrentPlacement: false,
-            out _,
-            out _,
-            out error);
+        return TryApplyDimensionIds(doc, dimensionIds, DddPluginCommandIds.DimLinear, out _, out _, out error);
     }
 
     internal static bool TryApplySameRow(
@@ -66,32 +53,42 @@ internal static class DddDimensionChainTextAvoidanceService
         out int adjustedCount,
         out string error)
     {
-        return TryApplyRows(
-            doc,
-            new List<ObjectId> { seedId },
-            commandTag,
-            preferCurrentPlacement: false,
-            out rowCount,
-            out adjustedCount,
-            out error);
-    }
+        rowCount = 0;
+        adjustedCount = 0;
+        error = string.Empty;
 
-    internal static bool TryApplyDimensionIds(
-        Document doc,
-        IList<ObjectId> dimensionIds,
-        string commandTag,
-        out int rowCount,
-        out int adjustedCount,
-        out string error)
-    {
-        return TryApplyRows(
-            doc,
-            dimensionIds,
-            commandTag,
-            preferCurrentPlacement: false,
-            out rowCount,
-            out adjustedCount,
-            out error);
+        try
+        {
+            using (doc.LockDocument())
+            using (var tr = doc.Database.TransactionManager.StartTransaction())
+            {
+                if (!TryBuildSameRowGroup(tr, seedId, out var rowGroup, out error))
+                    return false;
+
+                rowCount = rowGroup.Items.Count;
+                adjustedCount = ApplyRowGroup(commandTag, rowGroup);
+                tr.Commit();
+                return true;
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（无效操作）", ex);
+            error = $"文字避让失败：{ex.Message}";
+            return false;
+        }
+        catch (AcadRuntimeException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（CAD）", ex);
+            error = $"文字避让失败：{ex.Message}";
+            return false;
+        }
+        catch (ArgumentException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（参数）", ex);
+            error = $"文字避让失败：{ex.Message}";
+            return false;
+        }
     }
 
     internal static bool TryApplyDimensionIds(
@@ -103,7 +100,7 @@ internal static class DddDimensionChainTextAvoidanceService
         out int adjustedCount,
         out string error)
     {
-        return TryApplyRows(
+        return TryApplyDimensionIdsCore(
             doc,
             dimensionIds,
             commandTag,
@@ -113,7 +110,25 @@ internal static class DddDimensionChainTextAvoidanceService
             out error);
     }
 
-    private static bool TryApplyRows(
+    internal static bool TryApplyDimensionIds(
+        Document doc,
+        IList<ObjectId> dimensionIds,
+        string commandTag,
+        out int rowCount,
+        out int adjustedCount,
+        out string error)
+    {
+        return TryApplyDimensionIdsCore(
+            doc,
+            dimensionIds,
+            commandTag,
+            preferCurrentPlacement: false,
+            out rowCount,
+            out adjustedCount,
+            out error);
+    }
+
+    private static bool TryApplyDimensionIdsCore(
         Document doc,
         IList<ObjectId> dimensionIds,
         string commandTag,
@@ -134,13 +149,13 @@ internal static class DddDimensionChainTextAvoidanceService
             using (doc.LockDocument())
             using (var tr = doc.Database.TransactionManager.StartTransaction())
             {
-                if (!TryBuildExpandedRows(tr, dimensionIds, out var rowGroups, out error))
+                if (!TryBuildRowGroups(tr, dimensionIds, preferCurrentPlacement, out var rowGroups, out error))
                     return false;
 
                 foreach (var rowGroup in rowGroups)
                 {
                     rowCount += rowGroup.Items.Count;
-                    adjustedCount += ApplyRowGroup(commandTag, rowGroup, preferCurrentPlacement);
+                    adjustedCount += ApplyRowGroup(commandTag, rowGroup);
                 }
 
                 tr.Commit();
@@ -149,72 +164,71 @@ internal static class DddDimensionChainTextAvoidanceService
         }
         catch (InvalidOperationException ex)
         {
-            C_toolsDiagnostics.LogNonFatal($"{commandTag} text avoidance failed (invalid operation)", ex);
-            error = ex.Message;
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（无效操作）", ex);
+            error = $"文字避让失败：{ex.Message}";
             return false;
         }
         catch (AcadRuntimeException ex)
         {
-            C_toolsDiagnostics.LogNonFatal($"{commandTag} text avoidance failed (CAD)", ex);
-            error = ex.Message;
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（CAD）", ex);
+            error = $"文字避让失败：{ex.Message}";
             return false;
         }
         catch (ArgumentException ex)
         {
-            C_toolsDiagnostics.LogNonFatal($"{commandTag} text avoidance failed (argument)", ex);
-            error = ex.Message;
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（参数）", ex);
+            error = $"文字避让失败：{ex.Message}";
             return false;
         }
     }
 
-    private static bool TryBuildExpandedRows(
-        Transaction tr,
-        IList<ObjectId> seedIds,
-        out List<DimensionRowGroup> rowGroups,
-        out string error)
+    private static int ApplyRowGroup(string commandTag, DimensionRowGroup rowGroup)
     {
-        rowGroups = new List<DimensionRowGroup>();
-        error = string.Empty;
-        var validSeedIds = new HashSet<ObjectId>();
-
-        foreach (var seedId in seedIds)
+        rowGroup.Items.Sort(static (left, right) =>
         {
-            if (seedId.IsNull || !seedId.IsValid || seedId.IsErased || !validSeedIds.Add(seedId))
-                continue;
+            var compare = left.IntervalStart.CompareTo(right.IntervalStart);
+            if (compare != 0)
+                return compare;
+            return left.IntervalEnd.CompareTo(right.IntervalEnd);
+        });
 
-            var dbObject = tr.GetObject(seedId, OpenMode.ForRead, false);
-            if (dbObject is not Dimension dimension)
-                continue;
-
-            if (!TryBuildPlacementContext(dimension, out var context, out error))
-                return false;
-
-            if (FindMatchingRow(rowGroups, context) != null)
-                continue;
-
-            rowGroups.Add(new DimensionRowGroup(context));
-        }
-
-        foreach (var rowGroup in rowGroups)
-        {
-            if (!TryPopulateRow(tr, rowGroup, validSeedIds, out error))
-                return false;
-        }
-
-        return true;
+        var conflicted = BuildConflictFlags(rowGroup.Items);
+        LogAvoidanceSnapshot(commandTag, "before", rowGroup.Axis, rowGroup.ReferenceNormal, rowGroup.Items, conflicted);
+        var adjustedCount = ApplyNormalizedRowItems(commandTag, rowGroup.Items, rowGroup.Axis, conflicted);
+        LogAvoidanceSnapshot(commandTag, "after", rowGroup.Axis, rowGroup.ReferenceNormal, rowGroup.Items, conflicted);
+        return adjustedCount;
     }
 
-    private static bool TryPopulateRow(
+    private static bool TryBuildSameRowGroup(
         Transaction tr,
-        DimensionRowGroup rowGroup,
-        HashSet<ObjectId> seedIds,
+        ObjectId seedId,
+        out DimensionRowGroup rowGroup,
         out string error)
     {
+        rowGroup = null!;
         error = string.Empty;
-        var ownerRecord = (BlockTableRecord)tr.GetObject(rowGroup.OwnerId, OpenMode.ForRead);
+
+        var seedObject = tr.GetObject(seedId, OpenMode.ForWrite, false);
+        if (seedObject is not Dimension seedDimension)
+        {
+            error = "所选对象不是标注。";
+            return false;
+        }
+
+        if (!TryBuildPlacementContext(seedDimension, out var seedContext, out error))
+            return false;
+
+        rowGroup = new DimensionRowGroup(
+            seedDimension.OwnerId,
+            seedContext.Axis,
+            seedContext.ReferenceNormal,
+            seedContext.LineAnchor,
+            seedContext.RowTolerance);
+
+        var ownerRecord = (BlockTableRecord)tr.GetObject(seedDimension.OwnerId, OpenMode.ForRead);
         foreach (ObjectId entityId in ownerRecord)
         {
-            if (entityId.IsNull || !entityId.IsValid || entityId.IsErased)
+            if (!entityId.IsValid || entityId.IsErased)
                 continue;
 
             var dbObject = tr.GetObject(entityId, OpenMode.ForWrite, false);
@@ -223,27 +237,64 @@ internal static class DddDimensionChainTextAvoidanceService
 
             if (!TryBuildPlacementContext(dimension, out var context, out _))
                 continue;
+
             if (!CanShareRow(rowGroup, context))
                 continue;
 
-            context = context.WithRowAxes(rowGroup.Axis, rowGroup.ReferenceNormal);
-            if (!TryBuildRowItem(
-                    context,
-                    rowGroup.OutwardNormal,
-                    seedIds.Contains(entityId),
-                    out var item,
-                    out error))
-            {
+            if (!TryBuildUnifiedRowItem(context, out var rowItem, out error))
                 return false;
-            }
 
-            rowGroup.Add(item, context.RowTolerance);
+            rowGroup.Add(rowItem, context.RowTolerance);
         }
 
         return true;
     }
 
-    private static DimensionRowGroup? FindMatchingRow(
+    private static bool TryBuildRowGroups(
+        Transaction tr,
+        IList<ObjectId> dimensionIds,
+        bool preferCurrentPlacement,
+        out List<DimensionRowGroup> rowGroups,
+        out string error)
+    {
+        rowGroups = new List<DimensionRowGroup>();
+        error = string.Empty;
+        var seen = new HashSet<ObjectId>();
+
+        foreach (var dimensionId in dimensionIds)
+        {
+            if (!dimensionId.IsValid || dimensionId.IsErased || !seen.Add(dimensionId))
+                continue;
+
+            var dbObject = tr.GetObject(dimensionId, OpenMode.ForWrite, false);
+            if (dbObject is not Dimension dimension)
+                continue;
+
+            if (!TryBuildPlacementContext(dimension, out var context, out error))
+                return false;
+
+            if (!TryBuildUnifiedRowItem(context, preferCurrentPlacement, out var rowItem, out error))
+                return false;
+
+            var targetGroup = FindMatchingRowGroup(rowGroups, context);
+            if (targetGroup == null)
+            {
+                targetGroup = new DimensionRowGroup(
+                    dimension.OwnerId,
+                    context.Axis,
+                    context.ReferenceNormal,
+                    context.LineAnchor,
+                    context.RowTolerance);
+                rowGroups.Add(targetGroup);
+            }
+
+            targetGroup.Add(rowItem, context.RowTolerance);
+        }
+
+        return true;
+    }
+
+    private static DimensionRowGroup? FindMatchingRowGroup(
         List<DimensionRowGroup> rowGroups,
         DimensionPlacementContext context)
     {
@@ -258,8 +309,9 @@ internal static class DddDimensionChainTextAvoidanceService
 
     private static bool CanShareRow(DimensionRowGroup rowGroup, DimensionPlacementContext context)
     {
-        if (context.OwnerId != rowGroup.OwnerId || context.DimensionKind != rowGroup.DimensionKind)
+        if (context.OwnerId != rowGroup.OwnerId)
             return false;
+
         if (!AreParallel(rowGroup.Axis, context.Axis))
             return false;
 
@@ -267,172 +319,50 @@ internal static class DddDimensionChainTextAvoidanceService
         return rowDistance <= Math.Max(rowGroup.RowTolerance, context.RowTolerance);
     }
 
-    private static bool TryBuildRowItem(
+    private static bool TryBuildUnifiedRowItem(
         DimensionPlacementContext context,
-        Vector3d outwardNormal,
-        bool isSeed,
-        out DimensionRowItem item,
+        out DimensionRowItem rowItem,
         out string error)
     {
-        item = null!;
+        return TryBuildUnifiedRowItem(
+            context,
+            preferCurrentPlacement: false,
+            out rowItem,
+            out error);
+    }
+
+    private static bool TryBuildUnifiedRowItem(
+        DimensionPlacementContext context,
+        bool preferCurrentPlacement,
+        out DimensionRowItem rowItem,
+        out string error)
+    {
+        rowItem = null!;
         error = string.Empty;
 
-        try
-        {
-            context.Dimension.RecomputeDimensionBlock(true);
-            var textPosition = GetEffectiveTextPosition(context.Dimension, context.LineAnchor);
-            if (!TryBuildProjectedTextBounds(
-                    context.Dimension,
-                    textPosition,
-                    context.Axis,
-                    outwardNormal,
-                    out var bounds))
-            {
-                error = "无法读取标注文字范围。";
-                return false;
-            }
-
-            var textHeight = Math.Max(bounds.NormalSpan, Math.Max(context.Dimension.Dimtxt, PointTolerance));
-            var laneGap = Math.Max(
-                context.Dimension.Dimgap * LaneGapByDimGapFactor,
-                textHeight * LaneGapByTextHeightFactor);
-            var laneSpacing = Math.Max(textHeight + laneGap, PointTolerance);
-            var placementGap = Math.Max(
-                context.Dimension.Dimgap * PlacementGapByDimGapFactor,
-                textHeight * PlacementGapByTextHeightFactor);
-            var circleCenterAxis = context.LineAnchor.GetAsVector().DotProduct(context.Axis);
-            var lineNormal = context.LineAnchor.GetAsVector().DotProduct(outwardNormal);
-            var originalRadius = Math.Sqrt(bounds.MaxCornerDistanceSquared(circleCenterAxis, lineNormal));
-            var maxRadius = originalRadius + (textHeight * CircleAllowanceByTextHeightFactor);
-
-            item = new DimensionRowItem(
-                context.Dimension,
-                textPosition,
-                bounds,
-                laneSpacing,
-                placementGap,
-                circleCenterAxis,
-                lineNormal,
-                maxRadius,
-                TryReadUsingDefaultTextPosition(context.Dimension),
-                isSeed);
-            return true;
-        }
-        catch (InvalidOperationException ex)
-        {
-            error = ex.Message;
-            C_toolsDiagnostics.LogNonFatal("构建标注文字避让项失败（无效操作）", ex);
-            return false;
-        }
-        catch (AcadRuntimeException ex)
-        {
-            error = ex.Message;
-            C_toolsDiagnostics.LogNonFatal("构建标注文字避让项失败（CAD）", ex);
-            return false;
-        }
-        catch (ArgumentException ex)
-        {
-            error = ex.Message;
-            C_toolsDiagnostics.LogNonFatal("构建标注文字避让项失败（参数）", ex);
-            return false;
-        }
-    }
-
-    private static int ApplyRowGroup(
-        string commandTag,
-        DimensionRowGroup rowGroup,
-        bool preferCurrentPlacement)
-    {
-        rowGroup.Items.Sort(static (left, right) =>
-        {
-            var startCompare = left.Bounds.AxisStart.CompareTo(right.Bounds.AxisStart);
-            if (startCompare != 0)
-                return startCompare;
-            return left.Bounds.AxisEnd.CompareTo(right.Bounds.AxisEnd);
-        });
-
-        var laneSpacing = ResolveRowLaneSpacing(rowGroup.Items);
-        var placementGap = ResolveRowPlacementGap(rowGroup.Items);
-        var maxAxisShift = laneSpacing * AxisShiftLimitByLaneSpacingFactor;
-        var planItems = new List<DddDimensionTextAvoidancePlanner.PlanItem>(rowGroup.Items.Count);
-        foreach (var item in rowGroup.Items)
-        {
-            var preferAnchor = !item.UsesDefaultTextPosition ||
-                               (preferCurrentPlacement && item.IsSeed);
-            planItems.Add(new DddDimensionTextAvoidancePlanner.PlanItem(
-                item.Bounds,
-                preferAnchor,
-                item.CircleCenterAxis,
-                item.LineNormal,
-                item.MaxRadius));
-        }
-
-        var plan = DddDimensionTextAvoidancePlanner.Plan(
-            planItems,
-            laneSpacing,
-            MaxLaneIndex,
-            maxAxisShift,
-            placementGap);
-        LogAvoidanceSnapshot(commandTag, "before", rowGroup, plan.ConflictFlags);
-        if (!plan.HasConflicts)
-        {
-            LogAvoidanceSnapshot(commandTag, "after", rowGroup, plan.ConflictFlags);
-            return 0;
-        }
-
-        var adjustedCount = 0;
-        for (var index = 0; index < rowGroup.Items.Count; index++)
-        {
-            var item = rowGroup.Items[index];
-            var axisOffset = plan.AxisOffsets[index];
-            var normalOffset = plan.NormalOffsets[index];
-            var laneOffset = plan.LaneOffsets[index];
-            if (Math.Abs(axisOffset) <= PointTolerance && Math.Abs(normalOffset) <= PointTolerance)
-            {
-                LogPlacementDecision(commandTag, item, axisOffset, normalOffset, laneOffset, item.CurrentTextPosition);
-                continue;
-            }
-
-            var target = item.CurrentTextPosition +
-                         (rowGroup.Axis * axisOffset) +
-                         (rowGroup.OutwardNormal * normalOffset);
-            if (ApplyCustomTargetIfNeeded(item, target))
-                adjustedCount++;
-            LogPlacementDecision(commandTag, item, axisOffset, normalOffset, laneOffset, target);
-        }
-
-        LogAvoidanceSnapshot(commandTag, "after", rowGroup, plan.ConflictFlags);
-        return adjustedCount;
-    }
-
-    private static double ResolveRowLaneSpacing(List<DimensionRowItem> items)
-    {
-        var laneSpacing = PointTolerance;
-        foreach (var item in items)
-            laneSpacing = Math.Max(laneSpacing, item.LaneSpacing);
-        return laneSpacing;
-    }
-
-    private static double ResolveRowPlacementGap(List<DimensionRowItem> items)
-    {
-        var placementGap = 0.0;
-        foreach (var item in items)
-            placementGap = Math.Max(placementGap, item.PlacementGap);
-        return placementGap;
-    }
-
-    private static bool ApplyCustomTargetIfNeeded(DimensionRowItem item, Point3d target)
-    {
-        if (item.CurrentTextPosition.DistanceTo(target) <= PositionComparisonTolerance)
+        if (!TryBuildTextLayoutSnapshot(context, useDefaultPlacement: false, out var currentLayout, out error))
             return false;
 
-        item.Dimension.Dimatfit = 3;
-        item.Dimension.Dimtix = false;
-        item.Dimension.Dimtofl = true;
-        item.Dimension.Dimtmove = 2;
-        item.Dimension.UsingDefaultTextPosition = false;
-        item.Dimension.TextPosition = target;
-        item.Dimension.RecomputeDimensionBlock(true);
+        if (!TryBuildTextLayoutSnapshot(context, useDefaultPlacement: true, out var preferredLayout, out error))
+            return false;
+
+        var anchorLayout = preferCurrentPlacement ? currentLayout : preferredLayout;
+        var usesAnchorPlacement = preferCurrentPlacement || currentLayout.UsesDefaultTextPosition;
+        rowItem = new DimensionRowItem(
+            context.Dimension,
+            context.LineAnchor,
+            anchorLayout.TextPosition,
+            anchorLayout.IntervalStart,
+            anchorLayout.IntervalEnd,
+            anchorLayout.Center,
+            anchorLayout.VerticalCenter,
+            Math.Max(anchorLayout.HalfHeight, currentLayout.HalfHeight),
+            currentLayout.LaneIndex,
+            Math.Max(anchorLayout.LaneSpacing, currentLayout.LaneSpacing),
+            anchorLayout.OutwardNormal,
+            Math.Max(anchorLayout.HorizontalClearance, currentLayout.HorizontalClearance),
+            usesAnchorPlacement,
+            currentLayout.TextPosition);
         return true;
     }
 
@@ -447,7 +377,6 @@ internal static class DddDimensionChainTextAvoidanceService
         return dimension switch
         {
             RotatedDimension rotated => TryBuildPlacementContext(
-                DimensionKind.Linear,
                 rotated,
                 rotated.XLine1Point,
                 rotated.XLine2Point,
@@ -456,7 +385,6 @@ internal static class DddDimensionChainTextAvoidanceService
                 out context,
                 out error),
             AlignedDimension aligned => TryBuildPlacementContext(
-                DimensionKind.Aligned,
                 aligned,
                 aligned.XLine1Point,
                 aligned.XLine2Point,
@@ -469,7 +397,6 @@ internal static class DddDimensionChainTextAvoidanceService
     }
 
     private static bool TryBuildPlacementContext(
-        DimensionKind dimensionKind,
         Dimension dimension,
         Point3d firstPoint,
         Point3d secondPoint,
@@ -497,8 +424,8 @@ internal static class DddDimensionChainTextAvoidanceService
         var midPoint = MidPoint(firstPoint, secondPoint);
         var lineAnchor = ProjectPointOntoLine(midPoint, dimLinePoint, axis);
         var rowTolerance = Math.Max(dimension.Dimgap * 2.0, dimension.Dimtxt * 0.5);
+
         context = new DimensionPlacementContext(
-            dimensionKind,
             dimension,
             dimension.OwnerId,
             axis,
@@ -518,39 +445,1153 @@ internal static class DddDimensionChainTextAvoidanceService
         return false;
     }
 
-    private static bool TryBuildProjectedTextBounds(
-        Dimension dimension,
-        Point3d textPosition,
-        Vector3d axis,
-        Vector3d normal,
-        out DddDimensionTextAvoidancePlanner.ProjectedTextBounds bounds)
+    private static bool TryBuildTextLayoutSnapshot(
+        DimensionPlacementContext context,
+        bool useDefaultPlacement,
+        out TextLayoutSnapshot snapshot,
+        out string error)
     {
-        bounds = default;
-        if (TryGetDimensionTextExtents(dimension, out var extents) &&
-            TryProjectExtents(extents, axis, normal, out bounds))
+        snapshot = default;
+        error = string.Empty;
+
+        Dimension? clonedDimension = null;
+        try
         {
+            var workingDimension = context.Dimension;
+            var currentUsesDefault = TryReadUsingDefaultTextPosition(context.Dimension);
+            if (useDefaultPlacement && !currentUsesDefault)
+            {
+                clonedDimension = context.Dimension.Clone() as Dimension;
+                if (clonedDimension == null)
+                {
+                    error = "无法创建标注文字布局副本。";
+                    return false;
+                }
+
+                workingDimension = clonedDimension;
+                workingDimension.UsingDefaultTextPosition = true;
+            }
+
+            workingDimension.RecomputeDimensionBlock(true);
+
+            var textPosition = GetEffectiveTextPosition(workingDimension, context.LineAnchor);
+            var outwardNormal = ResolveTextAvoidanceNormal(
+                context.ReferenceNormal,
+                context.MidPoint,
+                context.LineAnchor,
+                textPosition);
+
+            var textWidth = EstimateTextWidth(workingDimension);
+            var textHeight = Math.Max(workingDimension.Dimtxt, PointTolerance);
+            var horizontalPadding = Math.Max(workingDimension.Dimgap * 2.0, textHeight * 0.35) * TextBoundsExpansionFactor;
+            var center = textPosition.GetAsVector().DotProduct(context.Axis);
+            var halfSpan = (textWidth + horizontalPadding) * 0.5;
+            var verticalCenter = Math.Abs(Dot2d(textPosition - context.LineAnchor, outwardNormal));
+            var halfHeight = (textHeight + horizontalPadding) * 0.5;
+
+            if (TryProjectDimensionTextBounds(
+                    workingDimension,
+                    context.Axis,
+                    outwardNormal,
+                    out var actualCenterPoint,
+                    out var intervalStart,
+                    out var intervalEnd,
+                    out var normalCenter,
+                    out var actualHalfHeight,
+                    out var actualTextHeight))
+            {
+                textPosition = actualCenterPoint;
+                center = actualCenterPoint.GetAsVector().DotProduct(context.Axis);
+                halfSpan = Math.Max((intervalEnd - intervalStart) * 0.5, PointTolerance);
+                verticalCenter = Math.Abs(normalCenter - context.LineAnchor.GetAsVector().DotProduct(outwardNormal));
+                halfHeight = Math.Max(actualHalfHeight + (horizontalPadding * 0.5), PointTolerance);
+                textHeight = Math.Max(actualTextHeight, textHeight);
+            }
+
+            var laneSpacing = Math.Max(textHeight * LaneSpacingFactor, workingDimension.Dimgap + textHeight);
+            var laneIndex = verticalCenter <= PointTolerance
+                ? 0
+                : Math.Max(0, (int)Math.Round(verticalCenter / laneSpacing, MidpointRounding.AwayFromZero));
+            var horizontalClearance = ResolveHorizontalClearance(workingDimension, textHeight, horizontalPadding);
+
+            snapshot = new TextLayoutSnapshot(
+                useDefaultPlacement || currentUsesDefault,
+                textPosition,
+                center - halfSpan,
+                center + halfSpan,
+                center,
+                verticalCenter,
+                halfHeight,
+                laneIndex,
+                laneSpacing,
+                outwardNormal,
+                horizontalClearance);
             return true;
         }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+            C_toolsDiagnostics.LogNonFatal("文字布局快照失败（无效操作）", ex);
+            return false;
+        }
+        catch (AcadRuntimeException ex)
+        {
+            error = ex.Message;
+            C_toolsDiagnostics.LogNonFatal("文字布局快照失败（CAD）", ex);
+            return false;
+        }
+        catch (ArgumentException ex)
+        {
+            error = ex.Message;
+            C_toolsDiagnostics.LogNonFatal("文字布局快照失败（参数）", ex);
+            return false;
+        }
+        finally
+        {
+            clonedDimension?.Dispose();
+        }
+    }
 
-        var textWidth = EstimateTextWidth(dimension);
-        var textHeight = Math.Max(dimension.Dimtxt, PointTolerance);
-        var axisCenter = textPosition.GetAsVector().DotProduct(axis);
-        var normalCenter = textPosition.GetAsVector().DotProduct(normal);
-        bounds = new DddDimensionTextAvoidancePlanner.ProjectedTextBounds(
-            axisCenter - (textWidth * 0.5),
-            axisCenter + (textWidth * 0.5),
-            normalCenter - (textHeight * 0.5),
-            normalCenter + (textHeight * 0.5));
+    private static bool TryApplyChain(
+        Document doc,
+        IList<Point3d> points,
+        IList<ObjectId> dimensionIds,
+        Vector3d unitAxis,
+        Vector3d referenceNormal,
+        LineAnchorBuilder lineAnchorBuilder,
+        string commandTag,
+        out string error)
+    {
+        error = string.Empty;
+
+        try
+        {
+            var db = doc.Database;
+            using (doc.LockDocument())
+            using (var tr = db.TransactionManager.StartTransaction())
+            {
+                if (!TryBuildRowItems(
+                        tr,
+                        points,
+                        dimensionIds,
+                        unitAxis,
+                        referenceNormal,
+                        lineAnchorBuilder,
+                        out var rowItems,
+                        out error))
+                {
+                    return false;
+                }
+
+                rowItems.Sort(static (left, right) =>
+                {
+                    var compare = left.IntervalStart.CompareTo(right.IntervalStart);
+                    if (compare != 0)
+                        return compare;
+                    return left.IntervalEnd.CompareTo(right.IntervalEnd);
+                });
+
+                var conflicted = BuildConflictFlags(rowItems);
+                LogAvoidanceSnapshot(commandTag, "before", unitAxis, referenceNormal, rowItems, conflicted);
+                if (!HasAnyConflict(conflicted))
+                {
+                    LogAvoidanceSnapshot(commandTag, "after", unitAxis, referenceNormal, rowItems, conflicted);
+                    tr.Commit();
+                    return true;
+                }
+
+                ApplyRowItems(commandTag, rowItems, conflicted, unitAxis);
+                LogAvoidanceSnapshot(commandTag, "after", unitAxis, referenceNormal, rowItems, conflicted);
+                tr.Commit();
+            }
+
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（无效操作）", ex);
+            error = $"文字避让失败：{ex.Message}";
+            return false;
+        }
+        catch (AcadRuntimeException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（CAD）", ex);
+            error = $"文字避让失败：{ex.Message}";
+            return false;
+        }
+        catch (ArgumentException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal($"{commandTag} 自动整理文字避让失败（参数）", ex);
+            error = $"文字避让失败：{ex.Message}";
+            return false;
+        }
+    }
+
+    private static bool TryBuildRowItems(
+        Transaction tr,
+        IList<Point3d> points,
+        IList<ObjectId> dimensionIds,
+        Vector3d unitAxis,
+        Vector3d referenceNormal,
+        LineAnchorBuilder lineAnchorBuilder,
+        out List<DimensionRowItem> rowItems,
+        out string error)
+    {
+        rowItems = new List<DimensionRowItem>();
+        error = string.Empty;
+
+        var count = Math.Min(points.Count - 1, dimensionIds.Count);
+        for (var index = 0; index < count; index++)
+        {
+            var dbObject = tr.GetObject(dimensionIds[index], OpenMode.ForWrite, false);
+            if (dbObject is not Dimension dimension)
+                continue;
+
+            var firstPoint = points[index];
+            var secondPoint = points[index + 1];
+            var lineAnchorResult = lineAnchorBuilder(firstPoint, secondPoint);
+            if (!lineAnchorResult.Success)
+            {
+                error = lineAnchorResult.Error;
+                return false;
+            }
+
+            var midpoint = MidPoint(firstPoint, secondPoint);
+            var lineAnchor = lineAnchorResult.LineAnchor;
+            var defaultTextPosition = GetEffectiveTextPosition(dimension, lineAnchor);
+            var outwardNormal = ResolveTextAvoidanceNormal(referenceNormal, midpoint, lineAnchor, defaultTextPosition);
+            var centerPoint = midpoint;
+            var center = centerPoint.GetAsVector().DotProduct(unitAxis);
+            var textWidth = EstimateTextWidth(dimension);
+            var textHeight = Math.Max(dimension.Dimtxt, PointTolerance);
+            var horizontalPadding = Math.Max(dimension.Dimgap * 2.0, textHeight * 0.35) * TextBoundsExpansionFactor;
+            var laneSpacing = Math.Max(textHeight * LaneSpacingFactor, dimension.Dimgap + textHeight);
+            var halfSpan = (textWidth + horizontalPadding) * 0.5;
+            var verticalCenter = 0.0;
+            var halfHeight = (textHeight + horizontalPadding) * 0.5;
+            var currentLaneIndex = 0;
+
+            dimension.RecomputeDimensionBlock(true);
+            if (TryProjectDimensionTextBounds(
+                    dimension,
+                    unitAxis,
+                    outwardNormal,
+                    out var actualCenterPoint,
+                    out var intervalStart,
+                    out var intervalEnd,
+                    out var normalCenter,
+                    out var actualHalfHeight,
+                    out var actualTextHeight))
+            {
+                centerPoint = actualCenterPoint;
+                center = centerPoint.GetAsVector().DotProduct(unitAxis);
+                halfSpan = Math.Max(((intervalEnd - intervalStart) + horizontalPadding) * 0.5, PointTolerance);
+                verticalCenter = Math.Abs(normalCenter - lineAnchor.GetAsVector().DotProduct(outwardNormal));
+                halfHeight = Math.Max(actualHalfHeight + (horizontalPadding * 0.5), PointTolerance);
+                textHeight = Math.Max(actualTextHeight, textHeight);
+                laneSpacing = Math.Max(textHeight * LaneSpacingFactor, dimension.Dimgap + textHeight);
+                if (verticalCenter > PointTolerance)
+                {
+                    currentLaneIndex = Math.Max(0, (int)Math.Round(verticalCenter / laneSpacing, MidpointRounding.AwayFromZero));
+                }
+            }
+
+            var horizontalClearance = ResolveHorizontalClearance(dimension, textHeight, horizontalPadding);
+
+            rowItems.Add(new DimensionRowItem(
+                dimension,
+                lineAnchor,
+                defaultTextPosition,
+                center - halfSpan,
+                center + halfSpan,
+                center,
+                verticalCenter,
+                halfHeight,
+                currentLaneIndex,
+                laneSpacing,
+                outwardNormal,
+                horizontalClearance));
+        }
+
         return true;
     }
 
-    private static bool TryProjectExtents(
-        Extents3d extents,
+    private static int ApplyNormalizedRowItems(
+        string commandTag,
+        List<DimensionRowItem> rowItems,
+        Vector3d unitAxis,
+        bool[] conflicted)
+    {
+        if (rowItems.Count == 0)
+            return 0;
+
+        if (!HasAnyConflict(conflicted))
+            return 0;
+
+        if (TryBuildHorizontalReflowTargets(rowItems, out var reflowedIntervals))
+        {
+            var adjustedByReflow = 0;
+            for (var index = 0; index < rowItems.Count; index++)
+            {
+                var item = rowItems[index];
+                var interval = reflowedIntervals[index];
+                var targetCenter = (interval.Start + interval.End) * 0.5;
+                var horizontalShift = targetCenter - item.Center;
+                var target = item.DefaultTextPosition + (unitAxis * (targetCenter - item.Center));
+                var changed = false;
+                if (Math.Abs(horizontalShift) > PointTolerance)
+                {
+                    changed = ApplyCustomTargetIfNeeded(item, target);
+                }
+                else if (index < conflicted.Length && conflicted[index])
+                {
+                    changed = ApplyDefaultPlacementIfNeeded(item);
+                }
+
+                if (changed)
+                    adjustedByReflow++;
+
+                LogLaneDecision(commandTag, item, item.CurrentLaneIndex, 0, item.OutwardNormal, target);
+            }
+
+            return adjustedByReflow;
+        }
+
+        var laneOccupancies = new List<List<OccupiedInterval>>();
+        var baseLane = EnsureLaneOccupancy(laneOccupancies, 0);
+        var rowLaneSpacing = ResolveRowLaneSpacing(rowItems);
+        var rowBaseNormalDistance = ResolveRowBaseNormalDistance(rowItems);
+        var adjustedCount = 0;
+
+        for (var index = 0; index < rowItems.Count; index++)
+        {
+            var item = rowItems[index];
+            if (IsIntervalFree(baseLane, item.IntervalStart, item.IntervalEnd, item.HorizontalClearance))
+            {
+                AddOccupiedInterval(baseLane, item.IntervalStart, item.IntervalEnd, item.HorizontalClearance);
+                var shouldResetToDefault = index < conflicted.Length && conflicted[index];
+                if (shouldResetToDefault && ApplyDefaultPlacementIfNeeded(item))
+                    adjustedCount++;
+
+                LogLaneDecision(
+                    commandTag,
+                    item,
+                    item.CurrentLaneIndex,
+                    0,
+                    item.OutwardNormal,
+                    shouldResetToDefault ? item.DefaultTextPosition : null);
+                continue;
+            }
+
+            if (TryBuildHorizontalTarget(
+                    item,
+                    unitAxis,
+                    baseLane,
+                    out var horizontalTarget,
+                    out var horizontalStart,
+                    out var horizontalEnd))
+            {
+                AddOccupiedInterval(baseLane, horizontalStart, horizontalEnd, item.HorizontalClearance);
+                if (ApplyCustomTargetIfNeeded(item, horizontalTarget))
+                    adjustedCount++;
+
+                LogLaneDecision(commandTag, item, item.CurrentLaneIndex, 0, item.OutwardNormal, horizontalTarget);
+                continue;
+            }
+
+            var laneIndex = FindAvailableLane(laneOccupancies, 1, item.IntervalStart, item.IntervalEnd, item.HorizontalClearance);
+            var target = BuildLaneTarget(item, laneIndex, rowLaneSpacing, rowBaseNormalDistance);
+            AddOccupiedInterval(EnsureLaneOccupancy(laneOccupancies, laneIndex), item.IntervalStart, item.IntervalEnd, item.HorizontalClearance);
+            if (ApplyCustomTargetIfNeeded(item, target))
+                adjustedCount++;
+
+            LogLaneDecision(commandTag, item, item.CurrentLaneIndex, laneIndex, item.OutwardNormal, target);
+        }
+
+        return adjustedCount;
+    }
+
+    private static bool ApplyDefaultPlacementIfNeeded(DimensionRowItem item)
+    {
+        if (item.UsesDefaultTextPosition && PointsNearlyEqual(item.CurrentTextPosition, item.DefaultTextPosition))
+            return false;
+
+        item.Dimension.UsingDefaultTextPosition = true;
+        item.Dimension.RecomputeDimensionBlock(true);
+        return true;
+    }
+
+    private static bool ApplyCustomTargetIfNeeded(DimensionRowItem item, Point3d target)
+    {
+        if (!item.UsesDefaultTextPosition && PointsNearlyEqual(item.CurrentTextPosition, target))
+            return false;
+
+        item.Dimension.Dimatfit = 3;
+        item.Dimension.Dimtix = false;
+        item.Dimension.Dimtofl = true;
+        item.Dimension.Dimtmove = 2;
+        item.Dimension.UsingDefaultTextPosition = false;
+        item.Dimension.TextPosition = target;
+        item.Dimension.RecomputeDimensionBlock(true);
+        return true;
+    }
+
+    private static bool PointsNearlyEqual(Point3d left, Point3d right) =>
+        left.DistanceTo(right) <= LayoutComparisonTolerance;
+
+    private static void ApplyRowItems(string commandTag, List<DimensionRowItem> rowItems, bool[] conflicted, Vector3d unitAxis)
+    {
+        var laneOccupancies = new List<List<OccupiedInterval>>();
+        var rowLaneSpacing = ResolveRowLaneSpacing(rowItems);
+        var rowBaseNormalDistance = ResolveRowBaseNormalDistance(rowItems);
+
+        for (var index = 0; index < rowItems.Count; index++)
+        {
+            var item = rowItems[index];
+            var currentLaneIndex = Math.Max(0, item.CurrentLaneIndex);
+            var currentLane = EnsureLaneOccupancy(laneOccupancies, currentLaneIndex);
+            if (IsIntervalFree(currentLane, item.IntervalStart, item.IntervalEnd, item.HorizontalClearance))
+            {
+                LogLaneDecision(commandTag, item, currentLaneIndex, currentLaneIndex, item.OutwardNormal, null);
+                AddOccupiedInterval(currentLane, item.IntervalStart, item.IntervalEnd, item.HorizontalClearance);
+                continue;
+            }
+
+            if (TryBuildHorizontalTarget(
+                    item,
+                    unitAxis,
+                    currentLane,
+                    out var horizontalTarget,
+                    out var horizontalStart,
+                    out var horizontalEnd))
+            {
+                ApplyItemTarget(item, horizontalTarget);
+                AddOccupiedInterval(currentLane, horizontalStart, horizontalEnd, item.HorizontalClearance);
+                LogLaneDecision(commandTag, item, currentLaneIndex, currentLaneIndex, item.OutwardNormal, horizontalTarget);
+                continue;
+            }
+
+            var laneIndex = FindAvailableLane(laneOccupancies, currentLaneIndex + 1, item.IntervalStart, item.IntervalEnd, item.HorizontalClearance);
+            var target = BuildLaneTarget(item, laneIndex, rowLaneSpacing, rowBaseNormalDistance);
+            ApplyItemTarget(item, target);
+            AddOccupiedInterval(EnsureLaneOccupancy(laneOccupancies, laneIndex), item.IntervalStart, item.IntervalEnd, item.HorizontalClearance);
+            LogLaneDecision(commandTag, item, currentLaneIndex, laneIndex, item.OutwardNormal, target);
+        }
+    }
+
+    private static bool TryBuildHorizontalReflowTargets(
+        List<DimensionRowItem> rowItems,
+        out List<ReflowedInterval> reflowedIntervals)
+    {
+        reflowedIntervals = new List<ReflowedInterval>(rowItems.Count);
+        foreach (var item in rowItems)
+            reflowedIntervals.Add(new ReflowedInterval(item.IntervalStart, item.IntervalEnd));
+
+        if (rowItems.Count < 2)
+            return true;
+
+        var passLimit = Math.Max(1, rowItems.Count * rowItems.Count);
+        for (var pass = 0; pass < passLimit; pass++)
+        {
+            if (!TryFindFirstHorizontalConflict(rowItems, reflowedIntervals, out var conflictIndex))
+                return true;
+
+            var startIndex = conflictIndex;
+            var endIndex = conflictIndex + 1;
+            var expanded = true;
+            List<ReflowedInterval> candidateIntervals = null!;
+
+            while (expanded)
+            {
+                if (!TryBuildReflowRange(rowItems, startIndex, endIndex, out candidateIntervals))
+                    return false;
+
+                expanded = false;
+                if (startIndex > 0 &&
+                    IntervalsConflict(
+                        rowItems[startIndex - 1],
+                        reflowedIntervals[startIndex - 1],
+                        rowItems[startIndex],
+                        candidateIntervals[0]))
+                {
+                    startIndex--;
+                    expanded = true;
+                }
+
+                if (endIndex < rowItems.Count - 1 &&
+                    IntervalsConflict(
+                        rowItems[endIndex],
+                        candidateIntervals[candidateIntervals.Count - 1],
+                        rowItems[endIndex + 1],
+                        reflowedIntervals[endIndex + 1]))
+                {
+                    endIndex++;
+                    expanded = true;
+                }
+            }
+
+            for (var index = startIndex; index <= endIndex; index++)
+                reflowedIntervals[index] = candidateIntervals[index - startIndex];
+        }
+
+        return !TryFindFirstHorizontalConflict(rowItems, reflowedIntervals, out _);
+    }
+
+    private static bool TryFindFirstHorizontalConflict(
+        List<DimensionRowItem> rowItems,
+        List<ReflowedInterval> intervals,
+        out int conflictIndex)
+    {
+        conflictIndex = -1;
+        for (var index = 0; index < rowItems.Count - 1; index++)
+        {
+            if (!IntervalsConflict(rowItems[index], intervals[index], rowItems[index + 1], intervals[index + 1]))
+                continue;
+
+            conflictIndex = index;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryBuildReflowRange(
+        List<DimensionRowItem> rowItems,
+        int startIndex,
+        int endIndex,
+        out List<ReflowedInterval> intervals)
+    {
+        intervals = new List<ReflowedInterval>(Math.Max(0, endIndex - startIndex + 1));
+        if (startIndex < 0 || endIndex >= rowItems.Count || startIndex > endIndex)
+            return false;
+
+        var relativeStart = 0.0;
+        var minAnchor = double.PositiveInfinity;
+        var maxAnchor = double.NegativeInfinity;
+        var relativeStarts = new List<double>(endIndex - startIndex + 1);
+        for (var index = startIndex; index <= endIndex; index++)
+        {
+            var item = rowItems[index];
+            if (index > startIndex)
+            {
+                var previous = rowItems[index - 1];
+                relativeStart += GetIntervalWidth(previous) + GetRequiredHorizontalGap(previous, item);
+            }
+
+            relativeStarts.Add(relativeStart);
+            var relativeCenter = relativeStart + (GetIntervalWidth(item) * 0.5);
+            var anchor = item.Center - relativeCenter;
+            minAnchor = Math.Min(minAnchor, anchor);
+            maxAnchor = Math.Max(maxAnchor, anchor);
+        }
+
+        if (!IsFiniteValue(minAnchor) || !IsFiniteValue(maxAnchor))
+            return false;
+
+        var groupStart = (minAnchor + maxAnchor) * 0.5;
+        for (var offset = 0; offset < relativeStarts.Count; offset++)
+        {
+            var item = rowItems[startIndex + offset];
+            var start = groupStart + relativeStarts[offset];
+            var end = start + GetIntervalWidth(item);
+            var targetCenter = (start + end) * 0.5;
+            if (Math.Abs(targetCenter - item.Center) > GetMaximumHorizontalShift(item) + PointTolerance)
+                return false;
+
+            intervals.Add(new ReflowedInterval(start, end));
+        }
+
+        return true;
+    }
+
+    private static bool IntervalsConflict(
+        DimensionRowItem left,
+        ReflowedInterval leftInterval,
+        DimensionRowItem right,
+        ReflowedInterval rightInterval)
+    {
+        if (Math.Abs(left.VerticalCenter - right.VerticalCenter) >
+            (left.HalfHeight + right.HalfHeight + PointTolerance))
+        {
+            return false;
+        }
+
+        var requiredGap = GetRequiredHorizontalGap(left, right);
+        return rightInterval.Start < leftInterval.End + requiredGap - PointTolerance;
+    }
+
+    private static double GetIntervalWidth(DimensionRowItem item) =>
+        Math.Max(item.IntervalEnd - item.IntervalStart, PointTolerance);
+
+    private static double GetMaximumHorizontalShift(DimensionRowItem item) =>
+        Math.Max(item.LaneSpacing * HorizontalShiftLimitFactor, PointTolerance);
+
+    private static bool TryBuildHorizontalTarget(
+        DimensionRowItem item,
+        Vector3d unitAxis,
+        List<OccupiedInterval> occupiedIntervals,
+        out Point3d target,
+        out double intervalStart,
+        out double intervalEnd)
+    {
+        target = default;
+        intervalStart = 0.0;
+        intervalEnd = 0.0;
+
+        var width = item.IntervalEnd - item.IntervalStart;
+        var maxShift = Math.Max(item.LaneSpacing * HorizontalShiftLimitFactor, PointTolerance);
+        var horizontalClearance = Math.Max(item.HorizontalClearance, PointTolerance);
+        var hasLeft = TryFindLeftPlacement(item.IntervalStart, width, maxShift, horizontalClearance, occupiedIntervals, out var leftStart, out var leftEnd);
+        var hasRight = TryFindRightPlacement(item.IntervalStart, width, maxShift, horizontalClearance, occupiedIntervals, out var rightStart, out var rightEnd);
+
+        if (!hasLeft && !hasRight)
+            return false;
+
+        var leftShift = hasLeft ? Math.Abs(((leftStart + leftEnd) * 0.5) - item.Center) : double.PositiveInfinity;
+        var rightShift = hasRight ? Math.Abs(((rightStart + rightEnd) * 0.5) - item.Center) : double.PositiveInfinity;
+        if (hasLeft && leftShift <= rightShift + PointTolerance)
+        {
+            intervalStart = leftStart;
+            intervalEnd = leftEnd;
+        }
+        else
+        {
+            intervalStart = rightStart;
+            intervalEnd = rightEnd;
+        }
+
+        var targetCenter = (intervalStart + intervalEnd) * 0.5;
+        target = item.DefaultTextPosition + (unitAxis * (targetCenter - item.Center));
+        return true;
+    }
+
+    private static bool TryFindLeftPlacement(
+        double originalStart,
+        double width,
+        double maxShift,
+        double horizontalClearance,
+        List<OccupiedInterval> occupiedIntervals,
+        out double targetStart,
+        out double targetEnd)
+    {
+        targetStart = 0.0;
+        targetEnd = 0.0;
+
+        var found = false;
+        var bestStart = 0.0;
+        var bestShift = double.PositiveInfinity;
+        var gapStart = double.NegativeInfinity;
+
+        foreach (var interval in occupiedIntervals)
+        {
+            var requiredGap = GetRequiredHorizontalGap(horizontalClearance, interval);
+            var candidateStart = Math.Min(originalStart, interval.Start - requiredGap - width);
+            var candidateShift = originalStart - candidateStart;
+            if (candidateShift > PointTolerance &&
+                candidateShift <= maxShift + PointTolerance &&
+                candidateStart >= gapStart - PointTolerance &&
+                candidateShift < bestShift)
+            {
+                bestStart = candidateStart;
+                bestShift = candidateShift;
+                found = true;
+            }
+
+            gapStart = interval.End + requiredGap;
+        }
+
+        if (!found)
+            return false;
+
+        targetStart = bestStart;
+        targetEnd = bestStart + width;
+        return true;
+    }
+
+    private static bool TryFindRightPlacement(
+        double originalStart,
+        double width,
+        double maxShift,
+        double horizontalClearance,
+        List<OccupiedInterval> occupiedIntervals,
+        out double targetStart,
+        out double targetEnd)
+    {
+        targetStart = originalStart;
+        targetEnd = originalStart + width;
+
+        foreach (var interval in occupiedIntervals)
+        {
+            var requiredGap = GetRequiredHorizontalGap(horizontalClearance, interval);
+            if (interval.End + requiredGap < targetStart - PointTolerance)
+                continue;
+
+            if (interval.Start - requiredGap > targetEnd + PointTolerance)
+                break;
+
+            targetStart = interval.End + requiredGap;
+            targetEnd = targetStart + width;
+        }
+
+        var shift = targetStart - originalStart;
+        if (shift <= PointTolerance || shift > maxShift + PointTolerance)
+            return false;
+
+        return true;
+    }
+
+    private static int FindAvailableLane(
+        List<List<OccupiedInterval>> laneOccupancies,
+        int startLaneIndex,
+        double intervalStart,
+        double intervalEnd,
+        double horizontalClearance)
+    {
+        var laneIndex = Math.Max(0, startLaneIndex);
+        while (true)
+        {
+            var lane = EnsureLaneOccupancy(laneOccupancies, laneIndex);
+            if (IsIntervalFree(lane, intervalStart, intervalEnd, horizontalClearance))
+                return laneIndex;
+
+            laneIndex++;
+        }
+    }
+
+    private static List<OccupiedInterval> EnsureLaneOccupancy(List<List<OccupiedInterval>> laneOccupancies, int laneIndex)
+    {
+        while (laneOccupancies.Count <= laneIndex)
+            laneOccupancies.Add(new List<OccupiedInterval>());
+        return laneOccupancies[laneIndex];
+    }
+
+    private static bool IsIntervalFree(List<OccupiedInterval> occupiedIntervals, double intervalStart, double intervalEnd, double horizontalClearance)
+    {
+        foreach (var interval in occupiedIntervals)
+        {
+            var requiredGap = GetRequiredHorizontalGap(horizontalClearance, interval);
+            if (intervalEnd + requiredGap <= interval.Start + PointTolerance)
+                return true;
+
+            if (intervalStart < interval.End + requiredGap - PointTolerance &&
+                intervalEnd > interval.Start - requiredGap + PointTolerance)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void AddOccupiedInterval(List<OccupiedInterval> occupiedIntervals, double intervalStart, double intervalEnd, double horizontalClearance)
+    {
+        var inserted = false;
+        for (var index = 0; index < occupiedIntervals.Count; index++)
+        {
+            if (intervalStart < occupiedIntervals[index].Start - PointTolerance)
+            {
+                occupiedIntervals.Insert(index, new OccupiedInterval(intervalStart, intervalEnd, horizontalClearance));
+                inserted = true;
+                break;
+            }
+        }
+
+        if (!inserted)
+            occupiedIntervals.Add(new OccupiedInterval(intervalStart, intervalEnd, horizontalClearance));
+    }
+
+    private static bool[] BuildConflictFlags(List<DimensionRowItem> rowItems)
+    {
+        var conflicted = new bool[rowItems.Count];
+        for (var leftIndex = 0; leftIndex < rowItems.Count; leftIndex++)
+        {
+            var left = rowItems[leftIndex];
+            for (var rightIndex = leftIndex + 1; rightIndex < rowItems.Count; rightIndex++)
+            {
+                var right = rowItems[rightIndex];
+                var requiredGap = GetRequiredHorizontalGap(left, right);
+                if (right.IntervalStart > left.IntervalEnd + requiredGap + PointTolerance)
+                    break;
+
+                if (Math.Abs(left.VerticalCenter - right.VerticalCenter) >
+                    (left.HalfHeight + right.HalfHeight + PointTolerance))
+                {
+                    continue;
+                }
+
+                conflicted[leftIndex] = true;
+                conflicted[rightIndex] = true;
+            }
+        }
+
+        return conflicted;
+    }
+
+    private static bool HasAnyConflict(bool[] conflicted)
+    {
+        foreach (var item in conflicted)
+        {
+            if (item)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void LogAvoidanceSnapshot(
+        string commandTag,
+        string stage,
+        Vector3d unitAxis,
+        Vector3d referenceNormal,
+        List<DimensionRowItem> rowItems,
+        bool[] conflicted)
+    {
+        C_toolsDiagnostics.LogNonFatal(
+            $"{commandTag} 调试 {stage} rowCount={rowItems.Count} axis={FormatDebugVector(unitAxis)} referenceNormal={FormatDebugVector(referenceNormal)}");
+
+        for (var index = 0; index < rowItems.Count; index++)
+        {
+            var item = rowItems[index];
+            var conflictedFlag = index < conflicted.Length && conflicted[index] ? "1" : "0";
+            C_toolsDiagnostics.LogNonFatal(
+                $"{commandTag} 调试 {stage} idx={index} conflict={conflictedFlag} lane={item.CurrentLaneIndex} spacing={item.LaneSpacing:0.###} lineAnchor={FormatDebugPoint(item.LineAnchor)} defaultText={FormatDebugPoint(item.DefaultTextPosition)} outwardNormal={FormatDebugVector(item.OutwardNormal)} state={DescribeDimensionState(item.Dimension)}");
+        }
+    }
+
+    private static void LogLaneDecision(
+        string commandTag,
+        DimensionRowItem item,
+        int currentLaneIndex,
+        int targetLaneIndex,
+        Vector3d outwardNormal,
+        Point3d? target)
+    {
+        var targetText = target.HasValue ? FormatDebugPoint(target.Value) : "keep";
+        C_toolsDiagnostics.LogNonFatal(
+            $"{commandTag} 调试 lane current={currentLaneIndex} target={targetLaneIndex} outwardNormal={FormatDebugVector(outwardNormal)} targetText={targetText} state={DescribeDimensionState(item.Dimension)}");
+    }
+
+    private static double ResolveRowLaneSpacing(List<DimensionRowItem> rowItems)
+    {
+        var laneSpacing = PointTolerance;
+        foreach (var item in rowItems)
+            laneSpacing = Math.Max(laneSpacing, item.LaneSpacing);
+
+        return laneSpacing;
+    }
+
+    private static double ResolveRowBaseNormalDistance(List<DimensionRowItem> rowItems)
+    {
+        var distance = PointTolerance;
+        foreach (var item in rowItems)
+            distance = Math.Max(distance, item.VerticalCenter);
+
+        return distance;
+    }
+
+    private static Point3d BuildLaneTarget(
+        DimensionRowItem item,
+        int targetLaneIndex,
+        double laneSpacing,
+        double baseNormalDistance)
+    {
+        if (targetLaneIndex <= 0)
+            return item.DefaultTextPosition;
+
+        var currentNormalDistance = Dot2d(item.DefaultTextPosition - item.LineAnchor, item.OutwardNormal);
+        var targetNormalDistance = Math.Max(baseNormalDistance, PointTolerance) +
+                                   (laneSpacing * Math.Max(0, targetLaneIndex - 1));
+        return item.DefaultTextPosition + (item.OutwardNormal * (targetNormalDistance - currentNormalDistance));
+    }
+
+    private static string DescribeDimensionState(Dimension dimension)
+    {
+        var idText = TryGetObjectIdText(dimension);
+        var usingDefaultTextPosition = TryGetUsingDefaultTextPosition(dimension);
+        var textPosition = TryGetTextPositionText(dimension);
+        var dimLinePoint = TryGetDimLinePointText(dimension);
+        return $"id={idText} type={dimension.GetType().Name} UsingDefaultTextPosition={usingDefaultTextPosition} TextPosition={textPosition} DimLinePoint={dimLinePoint}";
+    }
+
+    private static string TryGetObjectIdText(DBObject dbObject)
+    {
+        try
+        {
+            return dbObject.ObjectId.IsValid ? dbObject.ObjectId.Handle.ToString() : "null";
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 ObjectId 失败（无效操作）", ex);
+            return "error";
+        }
+        catch (AcadRuntimeException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 ObjectId 失败（CAD）", ex);
+            return "error";
+        }
+        catch (ArgumentException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 ObjectId 失败（参数）", ex);
+            return "error";
+        }
+    }
+
+    private static string TryGetUsingDefaultTextPosition(Dimension dimension)
+    {
+        try
+        {
+            return dimension.UsingDefaultTextPosition ? "true" : "false";
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 UsingDefaultTextPosition 失败（无效操作）", ex);
+            return "error";
+        }
+        catch (AcadRuntimeException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 UsingDefaultTextPosition 失败（CAD）", ex);
+            return "error";
+        }
+        catch (ArgumentException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 UsingDefaultTextPosition 失败（参数）", ex);
+            return "error";
+        }
+    }
+
+    private static string TryGetTextPositionText(Dimension dimension)
+    {
+        try
+        {
+            return FormatDebugPoint(dimension.TextPosition);
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 TextPosition 失败（无效操作）", ex);
+            return "error";
+        }
+        catch (AcadRuntimeException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 TextPosition 失败（CAD）", ex);
+            return "error";
+        }
+        catch (ArgumentException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 TextPosition 失败（参数）", ex);
+            return "error";
+        }
+    }
+
+    private static string TryGetDimLinePointText(Dimension dimension)
+    {
+        try
+        {
+            return dimension switch
+            {
+                AlignedDimension alignedDimension => FormatDebugPoint(alignedDimension.DimLinePoint),
+                RotatedDimension rotatedDimension => FormatDebugPoint(rotatedDimension.DimLinePoint),
+                _ => "n/a"
+            };
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 DimLinePoint 失败（无效操作）", ex);
+            return "error";
+        }
+        catch (AcadRuntimeException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 DimLinePoint 失败（CAD）", ex);
+            return "error";
+        }
+        catch (ArgumentException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("调试读取 DimLinePoint 失败（参数）", ex);
+            return "error";
+        }
+    }
+
+    private static string FormatDebugPoint(Point3d point) =>
+        $"({point.X:0.###},{point.Y:0.###},{point.Z:0.###})";
+
+    private static string FormatDebugVector(Vector3d vector) =>
+        $"({vector.X:0.###},{vector.Y:0.###},{vector.Z:0.###})";
+
+    private static void ApplyItemTarget(DimensionRowItem item, Point3d target)
+    {
+        item.Dimension.Dimatfit = 3;
+        item.Dimension.Dimtix = false;
+        item.Dimension.Dimtofl = true;
+        item.Dimension.Dimtmove = 2;
+        item.Dimension.UsingDefaultTextPosition = false;
+        item.Dimension.TextPosition = target;
+        item.Dimension.RecomputeDimensionBlock(true);
+    }
+
+    private static LineAnchorBuildResult BuildAlignedLineAnchor(Point3d firstPoint, Point3d secondPoint, double signedOffset)
+    {
+        if (!TryGetPerpendicularUnit(firstPoint, secondPoint, out var perpendicular))
+            return LineAnchorBuildResult.Failure("标注链段过短，无法整理文字避让。");
+
+        return LineAnchorBuildResult.CreateSuccess(MidPoint(firstPoint, secondPoint) + (perpendicular * signedOffset));
+    }
+
+    private static LineAnchorBuildResult BuildLinearLineAnchor(
+        Point3d firstPoint,
+        Point3d secondPoint,
+        bool isHorizontal,
+        double dimLineOrdinate)
+    {
+        var midpoint = MidPoint(firstPoint, secondPoint);
+        var lineAnchor = isHorizontal
+            ? new Point3d(midpoint.X, dimLineOrdinate, midpoint.Z)
+            : new Point3d(dimLineOrdinate, midpoint.Y, midpoint.Z);
+        return LineAnchorBuildResult.CreateSuccess(lineAnchor);
+    }
+
+    private static bool TryGetPerpendicularUnit(Point3d firstPoint, Point3d secondPoint, out Vector3d perpendicular)
+    {
+        perpendicular = default;
+        var direction = secondPoint - firstPoint;
+        var length2d = Math.Sqrt((direction.X * direction.X) + (direction.Y * direction.Y));
+        if (length2d < PointTolerance)
+            return false;
+
+        perpendicular = new Vector3d(-direction.Y / length2d, direction.X / length2d, 0.0);
+        return true;
+    }
+
+    private static bool TryNormalizePlanar(Vector3d vector, out Vector3d normalized)
+    {
+        normalized = new Vector3d(vector.X, vector.Y, 0.0);
+        if (normalized.Length <= PointTolerance)
+            return false;
+
+        normalized = normalized.GetNormal();
+        return true;
+    }
+
+    private static bool AreParallel(Vector3d left, Vector3d right) =>
+        Math.Abs(left.DotProduct(right)) >= ParallelDotTolerance;
+
+    private static Vector3d ResolveTextAvoidanceNormal(
+        Vector3d referenceNormal,
+        Point3d midPoint,
+        Point3d lineAnchor,
+        Point3d textPosition)
+    {
+        var textOffset = Dot2d(textPosition - lineAnchor, referenceNormal);
+        if (Math.Abs(textOffset) > PointTolerance)
+            return textOffset >= 0.0 ? -referenceNormal : referenceNormal;
+
+        var lineOffset = Dot2d(lineAnchor - midPoint, referenceNormal);
+        if (Math.Abs(lineOffset) > PointTolerance)
+            return lineOffset >= 0.0 ? -referenceNormal : referenceNormal;
+
+        return referenceNormal;
+    }
+
+    private static double EstimateTextWidth(Dimension dimension)
+    {
+        string text;
+        try
+        {
+            text = string.IsNullOrWhiteSpace(dimension.DimensionText)
+                ? dimension.FormatMeasurement(dimension.Measurement, string.Empty)
+                : dimension.DimensionText;
+        }
+        catch (InvalidOperationException)
+        {
+            text = dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+        catch (AcadRuntimeException)
+        {
+            text = dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+        catch (ArgumentException)
+        {
+            text = dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+            text = dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture);
+
+        text = text.Replace("<>", dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture)).Trim();
+        var charCount = Math.Max(text.Length, 1);
+        return Math.Max(dimension.Dimtxt, charCount * dimension.Dimtxt * EstimatedCharWidthFactor);
+    }
+
+    private static bool TryReadUsingDefaultTextPosition(Dimension dimension)
+    {
+        try
+        {
+            return dimension.UsingDefaultTextPosition;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (AcadRuntimeException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static Point3d GetEffectiveTextPosition(Dimension dimension, Point3d fallback)
+    {
+        try
+        {
+            var textPosition = dimension.TextPosition;
+            if (IsFiniteValue(textPosition.X) &&
+                IsFiniteValue(textPosition.Y) &&
+                IsFiniteValue(textPosition.Z))
+            {
+                return textPosition;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (AcadRuntimeException)
+        {
+        }
+        catch (ArgumentException)
+        {
+        }
+
+        return fallback;
+    }
+
+    private static Point3d ProjectPointOntoLine(Point3d point, Point3d linePoint, Vector3d axis)
+    {
+        var offset = point - linePoint;
+        return linePoint + (axis * offset.DotProduct(axis));
+    }
+
+    private static bool TryProjectDimensionTextBounds(
+        Dimension dimension,
         Vector3d axis,
         Vector3d normal,
-        out DddDimensionTextAvoidancePlanner.ProjectedTextBounds bounds)
+        out Point3d textCenterPoint,
+        out double intervalStart,
+        out double intervalEnd,
+        out double normalCenter,
+        out double halfHeight,
+        out double textHeight)
     {
-        bounds = default;
+        textCenterPoint = default;
+        intervalStart = 0.0;
+        intervalEnd = 0.0;
+        normalCenter = 0.0;
+        halfHeight = 0.0;
+        textHeight = 0.0;
+
+        if (!TryGetDimensionTextExtents(dimension, out var extents))
+            return false;
+
         var corners = new[]
         {
             new Point3d(extents.MinPoint.X, extents.MinPoint.Y, extents.MinPoint.Z),
@@ -581,17 +1622,22 @@ internal static class DddDimensionChainTextAvoidanceService
             return false;
         }
 
-        bounds = new DddDimensionTextAvoidancePlanner.ProjectedTextBounds(
-            minAxis,
-            maxAxis,
-            minNormal,
-            maxNormal);
+        intervalStart = minAxis;
+        intervalEnd = maxAxis;
+        normalCenter = (minNormal + maxNormal) * 0.5;
+        halfHeight = Math.Max((maxNormal - minNormal) * 0.5, PointTolerance);
+        textHeight = Math.Max(maxNormal - minNormal, PointTolerance);
+        textCenterPoint = new Point3d(
+            (extents.MinPoint.X + extents.MaxPoint.X) * 0.5,
+            (extents.MinPoint.Y + extents.MaxPoint.Y) * 0.5,
+            (extents.MinPoint.Z + extents.MaxPoint.Z) * 0.5);
         return true;
     }
 
     private static bool TryGetDimensionTextExtents(Dimension dimension, out Extents3d extents)
     {
         extents = default;
+
         try
         {
             var hasText = false;
@@ -601,8 +1647,13 @@ internal static class DddDimensionChainTextAvoidanceService
             {
                 try
                 {
-                    if (dbObject is not Entity entity || (entity is not DBText && entity is not MText))
+                    if (dbObject is not Entity entity)
                         continue;
+
+                    // 避让范围只取尺寸文字，避免把尺寸线、界线或标注脚当成文字障碍。
+                    if (entity is not DBText && entity is not MText)
+                        continue;
+
                     if (!TryGetEntityExtents(entity, out var currentExtents))
                         continue;
 
@@ -610,11 +1661,10 @@ internal static class DddDimensionChainTextAvoidanceService
                     {
                         extents = currentExtents;
                         hasText = true;
+                        continue;
                     }
-                    else
-                    {
-                        extents.AddExtents(currentExtents);
-                    }
+
+                    extents.AddExtents(currentExtents);
                 }
                 finally
                 {
@@ -641,6 +1691,7 @@ internal static class DddDimensionChainTextAvoidanceService
     private static bool TryGetEntityExtents(Entity entity, out Extents3d extents)
     {
         extents = default;
+
         try
         {
             extents = entity.GeometricExtents;
@@ -660,259 +1711,54 @@ internal static class DddDimensionChainTextAvoidanceService
         }
     }
 
-    private static double EstimateTextWidth(Dimension dimension)
-    {
-        string text;
-        try
-        {
-            text = string.IsNullOrWhiteSpace(dimension.DimensionText)
-                ? dimension.FormatMeasurement(dimension.Measurement, string.Empty)
-                : dimension.DimensionText;
-        }
-        catch (InvalidOperationException)
-        {
-            text = dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture);
-        }
-        catch (AcadRuntimeException)
-        {
-            text = dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture);
-        }
-        catch (ArgumentException)
-        {
-            text = dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture);
-        }
-
-        if (string.IsNullOrWhiteSpace(text))
-            text = dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture);
-        text = text.Replace("<>", dimension.Measurement.ToString("0.###", CultureInfo.InvariantCulture)).Trim();
-        return Math.Max(dimension.Dimtxt, Math.Max(text.Length, 1) * dimension.Dimtxt * EstimatedCharWidthFactor);
-    }
-
-    private static bool TryReadUsingDefaultTextPosition(Dimension dimension)
-    {
-        try
-        {
-            return dimension.UsingDefaultTextPosition;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-        catch (AcadRuntimeException)
-        {
-            return false;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-    }
-
-    private static Point3d GetEffectiveTextPosition(Dimension dimension, Point3d fallback)
-    {
-        try
-        {
-            var textPosition = dimension.TextPosition;
-            if (IsFiniteValue(textPosition.X) && IsFiniteValue(textPosition.Y) && IsFiniteValue(textPosition.Z))
-                return textPosition;
-        }
-        catch (InvalidOperationException)
-        {
-        }
-        catch (AcadRuntimeException)
-        {
-        }
-        catch (ArgumentException)
-        {
-        }
-
-        return fallback;
-    }
-
-    private static void LogAvoidanceSnapshot(
-        string commandTag,
-        string stage,
-        DimensionRowGroup rowGroup,
-        bool[] conflictFlags)
-    {
-        C_toolsDiagnostics.LogNonFatal(
-            $"{commandTag} 调试 {stage} rowCount={rowGroup.Items.Count} " +
-            $"axis={FormatDebugVector(rowGroup.Axis)} outward={FormatDebugVector(rowGroup.OutwardNormal)}");
-
-        for (var index = 0; index < rowGroup.Items.Count; index++)
-        {
-            var item = rowGroup.Items[index];
-            var conflict = index < conflictFlags.Length && conflictFlags[index] ? "1" : "0";
-            C_toolsDiagnostics.LogNonFatal(
-                $"{commandTag} 调试 {stage} idx={index} conflict={conflict} " +
-                $"bounds=({item.Bounds.AxisStart:0.###},{item.Bounds.AxisEnd:0.###};" +
-                $"{item.Bounds.NormalStart:0.###},{item.Bounds.NormalEnd:0.###}) " +
-                $"text={FormatDebugPoint(item.CurrentTextPosition)} state={DescribeDimensionState(item.Dimension)}");
-        }
-    }
-
-    private static void LogPlacementDecision(
-        string commandTag,
-        DimensionRowItem item,
-        double axisOffset,
-        double normalOffset,
-        int laneOffset,
-        Point3d target)
-    {
-        C_toolsDiagnostics.LogNonFatal(
-            $"{commandTag} 调试 placement axisShift={axisOffset:0.###} " +
-            $"normalShift={normalOffset:0.###} lane={laneOffset} " +
-            $"targetText={FormatDebugPoint(target)} state={DescribeDimensionState(item.Dimension)}");
-    }
-
-    private static string DescribeDimensionState(Dimension dimension) =>
-        $"id={TryGetObjectIdText(dimension)} type={dimension.GetType().Name} " +
-        $"UsingDefaultTextPosition={TryGetUsingDefaultTextPositionText(dimension)} " +
-        $"TextPosition={TryGetTextPositionText(dimension)} DimLinePoint={TryGetDimLinePointText(dimension)}";
-
-    private static string TryGetObjectIdText(DBObject dbObject)
-    {
-        try
-        {
-            return dbObject.ObjectId.IsValid ? dbObject.ObjectId.Handle.ToString() : "null";
-        }
-        catch (InvalidOperationException)
-        {
-            return "error";
-        }
-        catch (AcadRuntimeException)
-        {
-            return "error";
-        }
-        catch (ArgumentException)
-        {
-            return "error";
-        }
-    }
-
-    private static string TryGetUsingDefaultTextPositionText(Dimension dimension)
-    {
-        try
-        {
-            return dimension.UsingDefaultTextPosition ? "true" : "false";
-        }
-        catch (InvalidOperationException)
-        {
-            return "error";
-        }
-        catch (AcadRuntimeException)
-        {
-            return "error";
-        }
-        catch (ArgumentException)
-        {
-            return "error";
-        }
-    }
-
-    private static string TryGetTextPositionText(Dimension dimension)
-    {
-        try
-        {
-            return FormatDebugPoint(dimension.TextPosition);
-        }
-        catch (InvalidOperationException)
-        {
-            return "error";
-        }
-        catch (AcadRuntimeException)
-        {
-            return "error";
-        }
-        catch (ArgumentException)
-        {
-            return "error";
-        }
-    }
-
-    private static string TryGetDimLinePointText(Dimension dimension)
-    {
-        try
-        {
-            return dimension switch
-            {
-                RotatedDimension rotated => FormatDebugPoint(rotated.DimLinePoint),
-                AlignedDimension aligned => FormatDebugPoint(aligned.DimLinePoint),
-                _ => "n/a"
-            };
-        }
-        catch (InvalidOperationException)
-        {
-            return "error";
-        }
-        catch (AcadRuntimeException)
-        {
-            return "error";
-        }
-        catch (ArgumentException)
-        {
-            return "error";
-        }
-    }
-
-    private static string FormatDebugPoint(Point3d point) =>
-        $"({point.X:0.###},{point.Y:0.###},{point.Z:0.###})";
-
-    private static string FormatDebugVector(Vector3d vector) =>
-        $"({vector.X:0.###},{vector.Y:0.###},{vector.Z:0.###})";
-
-    private static bool TryNormalizePlanar(Vector3d vector, out Vector3d normalized)
-    {
-        normalized = new Vector3d(vector.X, vector.Y, 0.0);
-        if (normalized.Length <= PointTolerance)
-            return false;
-
-        normalized = normalized.GetNormal();
-        return true;
-    }
-
-    private static bool AreParallel(Vector3d left, Vector3d right) =>
-        Math.Abs(left.DotProduct(right)) >= ParallelDotTolerance;
-
-    private static Vector3d ResolveOutwardNormal(
-        Vector3d referenceNormal,
-        Point3d midPoint,
-        Point3d lineAnchor)
-    {
-        var lineOffset = Dot2d(lineAnchor - midPoint, referenceNormal);
-        if (Math.Abs(lineOffset) > PointTolerance)
-            return lineOffset >= 0.0 ? referenceNormal : -referenceNormal;
-        return referenceNormal;
-    }
-
-    private static Point3d ProjectPointOntoLine(Point3d point, Point3d linePoint, Vector3d axis)
-    {
-        var offset = point - linePoint;
-        return linePoint + (axis * offset.DotProduct(axis));
-    }
-
     private static Point3d MidPoint(Point3d firstPoint, Point3d secondPoint) =>
         new(
             (firstPoint.X + secondPoint.X) * 0.5,
             (firstPoint.Y + secondPoint.Y) * 0.5,
             (firstPoint.Z + secondPoint.Z) * 0.5);
 
-    private static double Dot2d(Vector3d left, Vector3d right) =>
-        (left.X * right.X) + (left.Y * right.Y);
+    private static double GetRequiredHorizontalGap(DimensionRowItem left, DimensionRowItem right) =>
+        Math.Max(left.HorizontalClearance, right.HorizontalClearance);
+
+    private static double GetRequiredHorizontalGap(double horizontalClearance, OccupiedInterval interval) =>
+        Math.Max(horizontalClearance, interval.HorizontalClearance);
+
+    private static double ResolveHorizontalClearance(Dimension dimension, double textHeight, double horizontalPadding)
+    {
+        var gapByPadding = horizontalPadding * HorizontalPlacementGapFactor;
+        var gapByTextHeight = textHeight * MinimumTextGapByHeightFactor;
+        var gapByDimGap = dimension.Dimgap * MinimumTextGapByDimGapFactor;
+        return Math.Max(gapByPadding, Math.Max(gapByTextHeight, gapByDimGap));
+    }
+
+    private static double Dot2d(Vector3d left, Vector3d right) => (left.X * right.X) + (left.Y * right.Y);
 
     private static bool IsFiniteValue(double value) =>
         !double.IsNaN(value) && !double.IsInfinity(value);
 
-    private enum DimensionKind
+    private readonly struct LineAnchorBuildResult
     {
-        Linear,
-        Aligned
+        private LineAnchorBuildResult(bool success, Point3d lineAnchor, string error)
+        {
+            Success = success;
+            LineAnchor = lineAnchor;
+            Error = error;
+        }
+
+        internal bool Success { get; }
+
+        internal Point3d LineAnchor { get; }
+
+        internal string Error { get; }
+
+        internal static LineAnchorBuildResult CreateSuccess(Point3d lineAnchor) => new(true, lineAnchor, string.Empty);
+
+        internal static LineAnchorBuildResult Failure(string error) => new(false, default, error);
     }
 
     private readonly struct DimensionPlacementContext
     {
         internal DimensionPlacementContext(
-            DimensionKind dimensionKind,
             Dimension dimension,
             ObjectId ownerId,
             Vector3d axis,
@@ -923,7 +1769,6 @@ internal static class DddDimensionChainTextAvoidanceService
             Point3d lineAnchor,
             double rowTolerance)
         {
-            DimensionKind = dimensionKind;
             Dimension = dimension;
             OwnerId = ownerId;
             Axis = axis;
@@ -934,8 +1779,6 @@ internal static class DddDimensionChainTextAvoidanceService
             LineAnchor = lineAnchor;
             RowTolerance = rowTolerance;
         }
-
-        internal DimensionKind DimensionKind { get; }
 
         internal Dimension Dimension { get; }
 
@@ -954,46 +1797,81 @@ internal static class DddDimensionChainTextAvoidanceService
         internal Point3d LineAnchor { get; }
 
         internal double RowTolerance { get; }
+    }
 
-        internal DimensionPlacementContext WithRowAxes(Vector3d axis, Vector3d referenceNormal) =>
-            new(
-                DimensionKind,
-                Dimension,
-                OwnerId,
-                axis,
-                referenceNormal,
-                FirstPoint,
-                SecondPoint,
-                MidPoint,
-                LineAnchor,
-                RowTolerance);
+    private readonly struct TextLayoutSnapshot
+    {
+        internal TextLayoutSnapshot(
+            bool usesDefaultTextPosition,
+            Point3d textPosition,
+            double intervalStart,
+            double intervalEnd,
+            double center,
+            double verticalCenter,
+            double halfHeight,
+            int laneIndex,
+            double laneSpacing,
+            Vector3d outwardNormal,
+            double horizontalClearance)
+        {
+            UsesDefaultTextPosition = usesDefaultTextPosition;
+            TextPosition = textPosition;
+            IntervalStart = intervalStart;
+            IntervalEnd = intervalEnd;
+            Center = center;
+            VerticalCenter = verticalCenter;
+            HalfHeight = halfHeight;
+            LaneIndex = laneIndex;
+            LaneSpacing = laneSpacing;
+            OutwardNormal = outwardNormal;
+            HorizontalClearance = horizontalClearance;
+        }
+
+        internal bool UsesDefaultTextPosition { get; }
+
+        internal Point3d TextPosition { get; }
+
+        internal double IntervalStart { get; }
+
+        internal double IntervalEnd { get; }
+
+        internal double Center { get; }
+
+        internal double VerticalCenter { get; }
+
+        internal double HalfHeight { get; }
+
+        internal int LaneIndex { get; }
+
+        internal double LaneSpacing { get; }
+
+        internal Vector3d OutwardNormal { get; }
+
+        internal double HorizontalClearance { get; }
     }
 
     private sealed class DimensionRowGroup
     {
-        private readonly HashSet<ObjectId> _itemIds = new();
-
-        internal DimensionRowGroup(DimensionPlacementContext seed)
+        internal DimensionRowGroup(
+            ObjectId ownerId,
+            Vector3d axis,
+            Vector3d referenceNormal,
+            Point3d lineAnchor,
+            double rowTolerance)
         {
-            DimensionKind = seed.DimensionKind;
-            OwnerId = seed.OwnerId;
-            Axis = seed.Axis;
-            ReferenceNormal = seed.ReferenceNormal;
-            OutwardNormal = ResolveOutwardNormal(seed.ReferenceNormal, seed.MidPoint, seed.LineAnchor);
-            LineAnchor = seed.LineAnchor;
-            RowTolerance = seed.RowTolerance;
+            OwnerId = ownerId;
+            Axis = axis;
+            ReferenceNormal = referenceNormal;
+            LineAnchor = lineAnchor;
+            RowTolerance = rowTolerance;
             Items = new List<DimensionRowItem>();
         }
-
-        internal DimensionKind DimensionKind { get; }
 
         internal ObjectId OwnerId { get; }
 
         internal Vector3d Axis { get; }
 
         internal Vector3d ReferenceNormal { get; }
-
-        internal Vector3d OutwardNormal { get; }
 
         internal Point3d LineAnchor { get; }
 
@@ -1003,9 +1881,6 @@ internal static class DddDimensionChainTextAvoidanceService
 
         internal void Add(DimensionRowItem item, double rowTolerance)
         {
-            if (!_itemIds.Add(item.Dimension.ObjectId))
-                return;
-
             Items.Add(item);
             RowTolerance = Math.Max(RowTolerance, rowTolerance);
         }
@@ -1015,46 +1890,91 @@ internal static class DddDimensionChainTextAvoidanceService
     {
         internal DimensionRowItem(
             Dimension dimension,
-            Point3d currentTextPosition,
-            DddDimensionTextAvoidancePlanner.ProjectedTextBounds bounds,
+            Point3d lineAnchor,
+            Point3d defaultTextPosition,
+            double intervalStart,
+            double intervalEnd,
+            double center,
+            double verticalCenter,
+            double halfHeight,
+            int currentLaneIndex,
             double laneSpacing,
-            double placementGap,
-            double circleCenterAxis,
-            double lineNormal,
-            double maxRadius,
-            bool usesDefaultTextPosition,
-            bool isSeed)
+            Vector3d outwardNormal,
+            double horizontalClearance,
+            bool usesDefaultTextPosition = true,
+            Point3d currentTextPosition = default)
         {
             Dimension = dimension;
-            CurrentTextPosition = currentTextPosition;
-            Bounds = bounds;
+            LineAnchor = lineAnchor;
+            DefaultTextPosition = defaultTextPosition;
+            IntervalStart = intervalStart;
+            IntervalEnd = intervalEnd;
+            Center = center;
+            VerticalCenter = verticalCenter;
+            HalfHeight = halfHeight;
+            CurrentLaneIndex = currentLaneIndex;
             LaneSpacing = laneSpacing;
-            PlacementGap = placementGap;
-            CircleCenterAxis = circleCenterAxis;
-            LineNormal = lineNormal;
-            MaxRadius = maxRadius;
+            OutwardNormal = outwardNormal;
+            HorizontalClearance = horizontalClearance;
             UsesDefaultTextPosition = usesDefaultTextPosition;
-            IsSeed = isSeed;
+            CurrentTextPosition = currentTextPosition;
         }
 
         internal Dimension Dimension { get; }
 
-        internal Point3d CurrentTextPosition { get; }
+        internal Point3d LineAnchor { get; }
 
-        internal DddDimensionTextAvoidancePlanner.ProjectedTextBounds Bounds { get; }
+        internal Point3d DefaultTextPosition { get; }
+
+        internal double IntervalStart { get; }
+
+        internal double IntervalEnd { get; }
+
+        internal double Center { get; }
+
+        internal double VerticalCenter { get; }
+
+        internal double HalfHeight { get; }
+
+        internal int CurrentLaneIndex { get; }
 
         internal double LaneSpacing { get; }
 
-        internal double PlacementGap { get; }
+        internal Vector3d OutwardNormal { get; }
 
-        internal double CircleCenterAxis { get; }
-
-        internal double LineNormal { get; }
-
-        internal double MaxRadius { get; }
+        internal double HorizontalClearance { get; }
 
         internal bool UsesDefaultTextPosition { get; }
 
-        internal bool IsSeed { get; }
+        internal Point3d CurrentTextPosition { get; }
+    }
+
+    private readonly struct ReflowedInterval
+    {
+        internal ReflowedInterval(double start, double end)
+        {
+            Start = Math.Min(start, end);
+            End = Math.Max(start, end);
+        }
+
+        internal double Start { get; }
+
+        internal double End { get; }
+    }
+
+    private readonly struct OccupiedInterval
+    {
+        internal OccupiedInterval(double start, double end, double horizontalClearance)
+        {
+            Start = start;
+            End = end;
+            HorizontalClearance = horizontalClearance;
+        }
+
+        internal double Start { get; }
+
+        internal double End { get; }
+
+        internal double HorizontalClearance { get; }
     }
 }

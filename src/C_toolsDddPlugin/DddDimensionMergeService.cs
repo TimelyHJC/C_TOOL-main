@@ -50,34 +50,11 @@ internal static class DddDimensionMergeService
         canceled = false;
 
         var ed = doc.Editor;
-        ObjectId seedDimensionId;
-        ObjectId boundaryDimensionId;
-        List<ObjectId>? impliedIds = null;
-
-        if (TryGetImpliedDimensionIds(ed, out impliedIds))
-        {
-            seedDimensionId = impliedIds[0];
-            boundaryDimensionId = impliedIds.Count == 2 ? impliedIds[1] : ObjectId.Null;
-        }
-        else
-        {
-            if (!TryPromptDimension(
-                    ed,
-                    "\nC_TOOL：选择要合并的起始标注：",
-                    out seedDimensionId,
-                    out canceled))
-            {
-                return false;
-            }
-
-            boundaryDimensionId = ObjectId.Null;
-        }
-
-        if (!TryReadMergeContext(doc, seedDimensionId, out var context, out error))
+        if (!TryGetRequestedDimensionIds(ed, out var selectedDimensionIds, out error, out canceled))
             return false;
 
-        if (impliedIds is { Count: > 2 })
-            return TryResolveMultiSelectionRange(context, impliedIds, out plan, out error);
+        if (!TryReadMergeContext(doc, selectedDimensionIds[0], out var context, out error))
+            return false;
 
         if (context.DimensionIds.Count < 2)
         {
@@ -85,40 +62,16 @@ internal static class DddDimensionMergeService
             return false;
         }
 
-        if (boundaryDimensionId.IsNull)
+        if (selectedDimensionIds.Count == 1)
         {
-            if (context.DimensionIds.Count == 2)
-            {
-                boundaryDimensionId = context.DimensionIds[0] == seedDimensionId
-                    ? context.DimensionIds[1]
-                    : context.DimensionIds[0];
-            }
-            else if (!TryPromptBoundaryDimension(ed, context, out boundaryDimensionId, out error, out canceled))
-            {
-                return false;
-            }
+            plan = new MergePlan(context, 0, context.DimensionIds.Count - 1);
+            return true;
         }
 
-        var boundaryIndex = IndexOfObjectId(context.DimensionIds, boundaryDimensionId);
-        if (boundaryIndex < 0)
-        {
-            error = "第二条标注不在当前同排连续标注链中。";
-            return false;
-        }
-
-        if (boundaryIndex == context.SelectedIndex)
-        {
-            error = "请再选择另一条同排标注作为合并边界。";
-            return false;
-        }
-
-        var rangeStartIndex = Math.Min(context.SelectedIndex, boundaryIndex);
-        var rangeEndIndex = Math.Max(context.SelectedIndex, boundaryIndex);
-        plan = new MergePlan(context, rangeStartIndex, rangeEndIndex);
-        return true;
+        return TryResolveSelectedRange(context, selectedDimensionIds, out plan, out error);
     }
 
-    private static bool TryResolveMultiSelectionRange(
+    private static bool TryResolveSelectedRange(
         MergeContext context,
         IReadOnlyList<ObjectId> selectedDimensionIds,
         out MergePlan plan,
@@ -127,71 +80,41 @@ internal static class DddDimensionMergeService
         plan = default;
         error = string.Empty;
 
-        var rangeStartIndex = int.MaxValue;
-        var rangeEndIndex = int.MinValue;
-        var foundCount = 0;
+        var selectedIndexes = new List<int>(selectedDimensionIds.Count);
+        var seen = new HashSet<ObjectId>();
         foreach (var selectedId in selectedDimensionIds)
         {
+            if (!seen.Add(selectedId))
+                continue;
+
             var index = IndexOfObjectId(context.DimensionIds, selectedId);
             if (index < 0)
             {
-                error = "预选标注不在同一排连续标注链中，请重新选择。";
+                error = "所选标注不在同一排连续标注链中，请重新选择。";
                 return false;
             }
 
-            rangeStartIndex = Math.Min(rangeStartIndex, index);
-            rangeEndIndex = Math.Max(rangeEndIndex, index);
-            foundCount++;
+            selectedIndexes.Add(index);
         }
 
-        if (foundCount < 2 || rangeStartIndex == rangeEndIndex)
+        if (selectedIndexes.Count < 2)
         {
-            error = "请至少预选两条同排标注作为合并范围。";
+            error = "请至少选择两条同排连续标注，或只选一条标注合并整排。";
             return false;
         }
 
-        plan = new MergePlan(context, rangeStartIndex, rangeEndIndex);
-        return true;
-    }
-
-    private static bool TryPromptBoundaryDimension(
-        Editor ed,
-        MergeContext context,
-        out ObjectId boundaryDimensionId,
-        out string error,
-        out bool canceled)
-    {
-        boundaryDimensionId = ObjectId.Null;
-        error = string.Empty;
-        canceled = false;
-
-        while (true)
+        selectedIndexes.Sort();
+        for (var i = 1; i < selectedIndexes.Count; i++)
         {
-            if (!TryPromptDimension(
-                    ed,
-                    "\nC_TOOL：请选择同排中另一条标注，F_DV 会把两者之间合并为一个总尺寸：",
-                    out var candidateId,
-                    out canceled))
-            {
-                return false;
-            }
-
-            var candidateIndex = IndexOfObjectId(context.DimensionIds, candidateId);
-            if (candidateIndex < 0)
-            {
-                ed.WriteMessage("\nC_TOOL：标注不在同排链中，重选。");
+            if (selectedIndexes[i] == selectedIndexes[i - 1] + 1)
                 continue;
-            }
 
-            if (candidateIndex == context.SelectedIndex)
-            {
-                ed.WriteMessage("\nC_TOOL：请选另一同排标注为边界。");
-                continue;
-            }
-
-            boundaryDimensionId = candidateId;
-            return true;
+            error = "请只选择同排连续标注；F_DV 只合并实际选中的连续尺寸。";
+            return false;
         }
+
+        plan = new MergePlan(context, selectedIndexes[0], selectedIndexes[^1]);
+        return true;
     }
 
     private static bool TryMergeDimensions(
@@ -287,7 +210,7 @@ internal static class DddDimensionMergeService
 
         var updatedPoints = BuildMergedPointList(context.Points, plan.RangeStartIndex, plan.RangeEndIndex);
         var updatedDimensionIds = BuildMergedDimensionIdList(context.DimensionIds, createdDimensionId, plan.RangeStartIndex, plan.RangeEndIndex);
-        if (!DddDimensionChainTextAvoidanceService.TryApplyLinearChain(
+        if (!DddDimensionTextAvoidanceService.TryApplyLinearChain(
                 doc,
                 updatedPoints,
                 updatedDimensionIds,
@@ -384,7 +307,7 @@ internal static class DddDimensionMergeService
 
         var updatedPoints = BuildMergedPointList(context.Points, plan.RangeStartIndex, plan.RangeEndIndex);
         var updatedDimensionIds = BuildMergedDimensionIdList(context.DimensionIds, createdDimensionId, plan.RangeStartIndex, plan.RangeEndIndex);
-        if (!DddDimensionChainTextAvoidanceService.TryApplyAlignedChain(
+        if (!DddDimensionTextAvoidanceService.TryApplyAlignedChain(
                 doc,
                 updatedPoints,
                 updatedDimensionIds,
@@ -670,6 +593,35 @@ internal static class DddDimensionMergeService
         return true;
     }
 
+    private static bool TryGetRequestedDimensionIds(
+        Editor ed,
+        out List<ObjectId> dimensionIds,
+        out string error,
+        out bool canceled)
+    {
+        error = string.Empty;
+        canceled = false;
+
+        if (TryGetImpliedDimensionIds(ed, out dimensionIds))
+            return true;
+
+        var options = new PromptSelectionOptions
+        {
+            AllowDuplicates = false,
+            MessageForAdding = "\nC_TOOL：选择要合并的尺寸（选 1 个合并整排，选多个只合并所选连续尺寸）："
+        };
+        var result = ed.GetSelection(options);
+        if (result.Status != PromptStatus.OK || result.Value == null)
+        {
+            ed.WriteMessage($"\n{UIMessages.Prefix_C_TOOL}{UIMessages.DimensionCommand.F_DV_Cancelled}");
+            dimensionIds = new List<ObjectId>();
+            canceled = true;
+            return false;
+        }
+
+        return TryCollectSupportedDimensionIds(result.Value.GetObjectIds(), out dimensionIds, out error);
+    }
+
     private static bool TryGetImpliedDimensionIds(Editor ed, out List<ObjectId> dimensionIds)
     {
         dimensionIds = new List<ObjectId>();
@@ -680,17 +632,32 @@ internal static class DddDimensionMergeService
 
         var ids = implied.Value.GetObjectIds();
         ed.SetImpliedSelection(Array.Empty<ObjectId>());
-        if (ids.Length == 0)
+        return TryCollectSupportedDimensionIds(ids, out dimensionIds, out _);
+    }
+
+    private static bool TryCollectSupportedDimensionIds(
+        IReadOnlyList<ObjectId> ids,
+        out List<ObjectId> dimensionIds,
+        out string error)
+    {
+        dimensionIds = new List<ObjectId>();
+        error = string.Empty;
+        if (ids.Count == 0)
             return false;
 
+        var seen = new HashSet<ObjectId>();
         var rotatedClass = Autodesk.AutoCAD.Runtime.RXClass.GetClass(typeof(RotatedDimension));
         var alignedClass = Autodesk.AutoCAD.Runtime.RXClass.GetClass(typeof(AlignedDimension));
         foreach (var id in ids)
         {
+            if (!seen.Add(id))
+                continue;
+
             var objectClass = id.ObjectClass;
             if (objectClass == null ||
                 (!objectClass.IsDerivedFrom(rotatedClass) && !objectClass.IsDerivedFrom(alignedClass)))
             {
+                error = "F_DV 仅支持线性标注与对齐标注。";
                 return false;
             }
 
@@ -698,35 +665,6 @@ internal static class DddDimensionMergeService
         }
 
         return dimensionIds.Count > 0;
-    }
-
-    private static bool TryPromptDimension(
-        Editor ed,
-        string message,
-        out ObjectId dimensionId,
-        out bool canceled)
-    {
-        canceled = false;
-        dimensionId = ObjectId.Null;
-
-        var options = new PromptEntityOptions(message)
-        {
-            AllowNone = true
-        };
-        options.SetRejectMessage("\nC_TOOL：只能选择线性标注或对齐标注。");
-        options.AddAllowedClass(typeof(RotatedDimension), true);
-        options.AddAllowedClass(typeof(AlignedDimension), true);
-
-        var result = ed.GetEntity(options);
-        if (result.Status != PromptStatus.OK)
-        {
-            ed.WriteMessage($"\n{UIMessages.Prefix_C_TOOL}{UIMessages.DimensionCommand.F_DV_Cancelled}");
-            canceled = true;
-            return false;
-        }
-
-        dimensionId = result.ObjectId;
-        return true;
     }
 
     private static void EraseDimensionRange(Transaction tr, IList<ObjectId> dimensionIds, int rangeStartIndex, int rangeEndIndex)

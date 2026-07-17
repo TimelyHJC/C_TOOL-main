@@ -64,7 +64,8 @@ public class DddCommands
         var doc = AcAp.DocumentManager.MdiActiveDocument;
         if (doc == null)
             return;
-        DddAlignedDimensionService.ContinueAfterNativeAlignedDimension(doc);
+        if (!DddAlignedDimensionService.ContinueAfterNativeAlignedDimension(doc))
+            F_DaAlignedDimension();
     }
 
     [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.DimLinear, CommandFlags.Modal | CommandFlags.UsePickSet)]
@@ -83,7 +84,8 @@ public class DddCommands
         var doc = AcAp.DocumentManager.MdiActiveDocument;
         if (doc == null)
             return;
-        DddLinearDimensionService.ContinueAfterNativeLinearDimension(doc);
+        if (!DddLinearDimensionService.ContinueAfterNativeLinearDimension(doc))
+            F_DcLinearDimension();
     }
 
     [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.DimTextAvoid, CommandFlags.Modal | CommandFlags.UsePickSet)]
@@ -148,6 +150,15 @@ public class DddCommands
         if (doc == null)
             return;
         DddTextToMTextService.Run(doc);
+    }
+
+    [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.TextToLeader, CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void F_DdcTextToLeader()
+    {
+        var doc = AcAp.DocumentManager.MdiActiveDocument;
+        if (doc == null)
+            return;
+        DddTextToLeaderService.Run(doc);
     }
 
     [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.TextMatch, CommandFlags.Modal | CommandFlags.UsePickSet)]

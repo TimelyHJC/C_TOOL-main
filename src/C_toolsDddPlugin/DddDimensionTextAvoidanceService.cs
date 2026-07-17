@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Geometry;
 using AcadRuntimeException = Autodesk.AutoCAD.Runtime.Exception;
 using C_toolsPlugin;
 using C_toolsShared;
@@ -10,6 +12,74 @@ namespace C_toolsDddPlugin;
 
 internal static class DddDimensionTextAvoidanceService
 {
+    internal static bool TryApplyAlignedChain(
+        Document doc,
+        IList<Point3d> points,
+        IList<ObjectId> dimensionIds,
+        double signedOffset,
+        out string error)
+    {
+        return DddDimensionChainTextAvoidanceService.TryApplyAlignedChain(
+            doc,
+            points,
+            dimensionIds,
+            signedOffset,
+            out error);
+    }
+
+    internal static bool TryApplyLinearChain(
+        Document doc,
+        IList<Point3d> points,
+        IList<ObjectId> dimensionIds,
+        bool isHorizontal,
+        double dimLineOrdinate,
+        out string error)
+    {
+        return DddDimensionChainTextAvoidanceService.TryApplyLinearChain(
+            doc,
+            points,
+            dimensionIds,
+            isHorizontal,
+            dimLineOrdinate,
+            out error);
+    }
+
+    internal static bool TryApplyDimensionIds(
+        Document doc,
+        IList<ObjectId> dimensionIds,
+        string commandTag,
+        out int rowCount,
+        out int adjustedCount,
+        out string error)
+    {
+        return DddDimensionChainTextAvoidanceService.TryApplyDimensionIds(
+            doc,
+            dimensionIds,
+            commandTag,
+            out rowCount,
+            out adjustedCount,
+            out error);
+    }
+
+    internal static bool TryApplyDimensionIds(
+        Document doc,
+        IList<ObjectId> dimensionIds,
+        string commandTag,
+        bool preferCurrentPlacement,
+        out int rowCount,
+        out int adjustedCount,
+        out string error)
+    {
+        return DddDimensionChainTextAvoidanceService.TryApplyDimensionIds(
+            doc,
+            dimensionIds,
+            commandTag,
+            preferCurrentPlacement,
+            out rowCount,
+            out adjustedCount,
+            out error);
+    }
+
     internal static void Run(Document doc)
     {
         var ed = doc.Editor;

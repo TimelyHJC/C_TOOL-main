@@ -16,6 +16,13 @@ public static class WindowTitleBarHelper
     private const int DwAttributeTextColor = 36;
     private const double TitleBarIconViewBoxWidth = 378.58d;
     private const double TitleBarIconViewBoxHeight = 376.4d;
+    private const double TitleBarIconStrokeWidth = 24d;
+    private const string TitleBarIconFramePath =
+        "M 318.13,152.17 l 0.74,0.74 a 40,40 0 0 1 11.72,28.28 V 321.4 a 40,40 0 0 1 -40,40 H 55 a 40,40 0 0 1 -40,-40 V 85.81 a 40,40 0 0 1 40,-40 H 195.2 a 40,40 0 0 1 28.29,11.71 l 5.07,5.08";
+    private const string TitleBarIconPencilPath =
+        "M 357.72,57.82 a 20,20 0 0 1 0,28.29 l -49.65,49.66 -23,23 a 46,46 0 0 1 -20.61,11.9 l -75.55,20.24 a 1,1 0 0 1 -1.22,-1.23 l 20.24,-75.55 a 46,46 0 0 1 11.91,-20.62 l 72.67,-72.67 a 20,20 0 0 1 28.29,0 Z";
+    private const string TitleBarIconArcPath =
+        "M 68.9,182.92 A 135.85,135.85 0 0 0 204.75,318.77";
     private static ImageSource? _cachedWindowIcon;
 
     public static void TryApplyDarkTitleBar(
@@ -93,21 +100,21 @@ public static class WindowTitleBarHelper
         };
 
         iconDrawing.Children.Add(CreateStrokeDrawing(
-            "M 318.13,152.17 l 0.74,0.74 a 40,40 0 0 1 11.72,28.28 V 321.4 a 40,40 0 0 1 -40,40 H 55 a 40,40 0 0 1 -40,-40 V 85.81 a 40,40 0 0 1 40,-40 H 195.2 a 40,40 0 0 1 28.29,11.71 l 5.07,5.08",
+            TitleBarIconFramePath,
             Color.FromRgb(0x34, 0x88, 0xC9),
-            30d,
+            TitleBarIconStrokeWidth,
             PenLineCap.Square,
             PenLineJoin.Round));
         iconDrawing.Children.Add(CreateStrokeDrawing(
-            "M 357.72,57.82 a 20,20 0 0 1 0,28.29 l -49.65,49.66 -23,23 a 46,46 0 0 1 -20.61,11.9 l -75.55,20.24 a 1,1 0 0 1 -1.22,-1.23 l 20.24,-75.55 a 46,46 0 0 1 11.91,-20.62 l 72.67,-72.67 a 20,20 0 0 1 28.29,0 Z",
+            TitleBarIconPencilPath,
             Color.FromRgb(0xE7, 0x1F, 0x19),
-            30d,
+            TitleBarIconStrokeWidth,
             PenLineCap.Flat,
             PenLineJoin.Miter));
         iconDrawing.Children.Add(CreateStrokeDrawing(
-            "M 68.9,182.92 A 135.85,135.85 0 0 0 204.75,318.77",
+            TitleBarIconArcPath,
             Color.FromRgb(0x34, 0x88, 0xC9),
-            30d,
+            TitleBarIconStrokeWidth,
             PenLineCap.Round,
             PenLineJoin.Miter));
         iconDrawing.Freeze();

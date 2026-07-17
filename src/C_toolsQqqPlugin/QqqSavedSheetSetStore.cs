@@ -81,8 +81,10 @@ internal sealed class QqqSavedSheetSetDefinition
 internal static class QqqSavedSheetSetStore
 {
     private const string FolderName = "QqqSavedSheetSets";
+    private const string GlobalFileName = "global_tad_tags.xml";
     private const string WorkingFolderName = "QqqWorkingSheetSets";
     private const string FileExtension = ".xml";
+    private const string DefaultSheetSetName = "当前";
     private const string WorkingSetName = "Current";
     private const string DddPanelListsFileName = "ddd_panel_lists.json";
     private const string DddTextEditHistoryFileName = "ddd_text_edit_history.json";
@@ -91,79 +93,40 @@ internal static class QqqSavedSheetSetStore
     internal static IReadOnlyList<QqqSavedSheetSetDefinition> Load(string documentPath)
     {
         var normalizedDocumentPath = NormalizeDocumentPath(documentPath);
-        if (normalizedDocumentPath.Length == 0)
-            return Array.Empty<QqqSavedSheetSetDefinition>();
+        var globalDefinitions = LoadDefinitionsFromFile(GetGlobalFilePath(), "读取 V_QQQ 全局 TAD 标签");
+        var documentDefinitions = normalizedDocumentPath.Length == 0
+            ? new List<QqqSavedSheetSetDefinition>()
+            : LoadDefinitionsFromFile(GetFilePath(normalizedDocumentPath), $"读取 V_QQQ TAD 标签 {normalizedDocumentPath}");
 
-        var path = GetFilePath(normalizedDocumentPath);
-        var text = C_toolsTextFileStore.TryReadAllText(path, $"读取 V_QQQ TAD 标签 {normalizedDocumentPath}");
-        if (string.IsNullOrWhiteSpace(text))
-            return Array.Empty<QqqSavedSheetSetDefinition>();
-
-        try
-        {
-            using var reader = new StringReader(text);
-            if (SheetSetSerializer.Deserialize(reader) is not QqqSavedSheetSetDocumentDto documentDto)
-                return Array.Empty<QqqSavedSheetSetDefinition>();
-
-            return documentDto.SheetSets
-                .Where(static x => !string.IsNullOrWhiteSpace(x.Name))
-                .Select(static x => new QqqSavedSheetSetDefinition
-                {
-                    Name = x.Name.Trim(),
-                    HasDddPanelListsSnapshot = x.HasDddPanelListsSnapshot,
-                    DddPanelListsSnapshot = x.DddPanelListsSnapshot ?? "",
-                    HasDddTextEditHistorySnapshot = x.HasDddTextEditHistorySnapshot,
-                    DddTextEditHistorySnapshot = x.DddTextEditHistorySnapshot ?? "",
-                    Frames = x.Frames.Select(CreateFrameInfo).ToList()
-                })
-                .Where(static x => x.Frames.Count > 0)
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            C_toolsDiagnostics.LogNonFatal("V_QQQ 读取 TAD 标签失败", ex);
-            return Array.Empty<QqqSavedSheetSetDefinition>();
-        }
+        return MergeGlobalAndDocumentDefinitions(globalDefinitions, documentDefinitions);
     }
 
     internal static bool Save(string documentPath, IEnumerable<QqqSavedSheetSetDefinition> definitions)
     {
         var normalizedDocumentPath = NormalizeDocumentPath(documentPath);
-        if (normalizedDocumentPath.Length == 0)
-            return false;
-
-        try
-        {
-            var documentDto = new QqqSavedSheetSetDocumentDto
+        var normalizedDefinitions = NormalizeDefinitions(definitions);
+        var globalDefinitions = normalizedDefinitions
+            .Select(static x => new QqqSavedSheetSetDefinition
             {
-                DocumentPath = normalizedDocumentPath,
-                SheetSets = definitions
-                    .Where(static x => !string.IsNullOrWhiteSpace(x.Name) && x.Frames.Count > 0)
-                    .Select(static x => new QqqSavedSheetSetDto
-                    {
-                        Name = x.Name.Trim(),
-                        HasDddPanelListsSnapshot = x.HasDddPanelListsSnapshot,
-                        DddPanelListsSnapshot = x.DddPanelListsSnapshot ?? "",
-                        HasDddTextEditHistorySnapshot = x.HasDddTextEditHistorySnapshot,
-                        DddTextEditHistorySnapshot = x.DddTextEditHistorySnapshot ?? "",
-                        Frames = x.Frames.Select(CreateFrameDto).ToList()
-                    })
-                    .ToList()
-            };
+                Name = x.Name
+            })
+            .ToList();
 
-            using var writer = new Utf8StringWriter();
-            SheetSetSerializer.Serialize(writer, documentDto);
-            return C_toolsTextFileStore.TryWriteAllText(
-                GetFilePath(normalizedDocumentPath),
-                writer.ToString(),
-                Encoding.UTF8,
-                $"写入 V_QQQ TAD 标签 {normalizedDocumentPath}");
-        }
-        catch (Exception ex)
-        {
-            C_toolsDiagnostics.LogNonFatal("V_QQQ 保存 TAD 标签失败", ex);
-            return false;
-        }
+        var globalSaved = SaveDefinitionsToFile(
+            GetGlobalFilePath(),
+            "",
+            globalDefinitions,
+            "写入 V_QQQ 全局 TAD 标签",
+            "V_QQQ 保存全局 TAD 标签失败");
+        if (!globalSaved || normalizedDocumentPath.Length == 0)
+            return globalSaved;
+
+        return SaveDefinitionsToFile(
+            GetFilePath(normalizedDocumentPath),
+            normalizedDocumentPath,
+            normalizedDefinitions,
+            $"写入 V_QQQ TAD 标签 {normalizedDocumentPath}",
+            "V_QQQ 保存 TAD 标签失败");
     }
 
     internal static IReadOnlyList<FrameInfo> LoadWorkingSet(string documentPath)
@@ -305,6 +268,11 @@ internal static class QqqSavedSheetSetStore
         return Path.Combine(C_toolsPaths.UserConfigFolder, FolderName, fileName);
     }
 
+    private static string GetGlobalFilePath()
+    {
+        return Path.Combine(C_toolsPaths.UserConfigFolder, FolderName, GlobalFileName);
+    }
+
     private static string GetWorkingSetFilePath(string documentPath)
     {
         var fileName = BuildFileName(documentPath);
@@ -400,6 +368,161 @@ internal static class QqqSavedSheetSetStore
             PlotScale = string.IsNullOrWhiteSpace(dto.PlotScale) ? "自定义" : dto.PlotScale,
             Status = "待打印",
             OutputFile = ""
+        };
+    }
+
+    private static List<QqqSavedSheetSetDefinition> LoadDefinitionsFromFile(string path, string operationName)
+    {
+        var text = C_toolsTextFileStore.TryReadAllText(path, operationName);
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<QqqSavedSheetSetDefinition>();
+
+        try
+        {
+            using var reader = new StringReader(text);
+            if (SheetSetSerializer.Deserialize(reader) is not QqqSavedSheetSetDocumentDto documentDto)
+                return new List<QqqSavedSheetSetDefinition>();
+
+            return documentDto.SheetSets
+                .Where(static x => !string.IsNullOrWhiteSpace(x.Name))
+                .Select(static x => new QqqSavedSheetSetDefinition
+                {
+                    Name = x.Name.Trim(),
+                    HasDddPanelListsSnapshot = x.HasDddPanelListsSnapshot,
+                    DddPanelListsSnapshot = x.DddPanelListsSnapshot ?? "",
+                    HasDddTextEditHistorySnapshot = x.HasDddTextEditHistorySnapshot,
+                    DddTextEditHistorySnapshot = x.DddTextEditHistorySnapshot ?? "",
+                    Frames = x.Frames.Select(CreateFrameInfo).ToList()
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal(operationName + "失败", ex);
+            return new List<QqqSavedSheetSetDefinition>();
+        }
+    }
+
+    private static List<QqqSavedSheetSetDefinition> MergeGlobalAndDocumentDefinitions(
+        IReadOnlyList<QqqSavedSheetSetDefinition> globalDefinitions,
+        IReadOnlyList<QqqSavedSheetSetDefinition> documentDefinitions)
+    {
+        var result = new List<QqqSavedSheetSetDefinition>();
+        if (globalDefinitions.Count == 0)
+        {
+            result.Add(new QqqSavedSheetSetDefinition { Name = DefaultSheetSetName });
+        }
+        else
+        {
+            result.AddRange(globalDefinitions.Select(CloneDefinitionWithoutFrames));
+        }
+
+        foreach (var documentDefinition in documentDefinitions.Where(static x => !string.IsNullOrWhiteSpace(x.Name)))
+        {
+            var existing = result.FirstOrDefault(x => string.Equals(x.Name, documentDefinition.Name, StringComparison.OrdinalIgnoreCase));
+            if (existing == null)
+            {
+                result.Add(CloneDefinition(documentDefinition));
+                continue;
+            }
+
+            existing.HasDddPanelListsSnapshot = documentDefinition.HasDddPanelListsSnapshot;
+            existing.DddPanelListsSnapshot = documentDefinition.DddPanelListsSnapshot;
+            existing.HasDddTextEditHistorySnapshot = documentDefinition.HasDddTextEditHistorySnapshot;
+            existing.DddTextEditHistorySnapshot = documentDefinition.DddTextEditHistorySnapshot;
+            existing.Frames = documentDefinition.Frames.Select(CloneFrameInfo).ToList();
+        }
+
+        return NormalizeDefinitions(result);
+    }
+
+    private static List<QqqSavedSheetSetDefinition> NormalizeDefinitions(IEnumerable<QqqSavedSheetSetDefinition> definitions)
+    {
+        var result = new List<QqqSavedSheetSetDefinition>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in definitions.Where(static x => x != null && !string.IsNullOrWhiteSpace(x.Name)))
+        {
+            var name = definition.Name.Trim();
+            if (!seen.Add(name))
+                continue;
+
+            result.Add(new QqqSavedSheetSetDefinition
+            {
+                Name = name,
+                HasDddPanelListsSnapshot = definition.HasDddPanelListsSnapshot,
+                DddPanelListsSnapshot = definition.DddPanelListsSnapshot ?? "",
+                HasDddTextEditHistorySnapshot = definition.HasDddTextEditHistorySnapshot,
+                DddTextEditHistorySnapshot = definition.DddTextEditHistorySnapshot ?? "",
+                Frames = definition.Frames.Select(CloneFrameInfo).ToList()
+            });
+        }
+
+        if (result.Count == 0)
+            result.Add(new QqqSavedSheetSetDefinition { Name = DefaultSheetSetName });
+
+        return result;
+    }
+
+    private static bool SaveDefinitionsToFile(
+        string path,
+        string documentPath,
+        IEnumerable<QqqSavedSheetSetDefinition> definitions,
+        string operationName,
+        string logMessage)
+    {
+        try
+        {
+            var documentDto = new QqqSavedSheetSetDocumentDto
+            {
+                DocumentPath = documentPath,
+                SheetSets = definitions
+                    .Where(static x => !string.IsNullOrWhiteSpace(x.Name))
+                    .Select(static x => new QqqSavedSheetSetDto
+                    {
+                        Name = x.Name.Trim(),
+                        HasDddPanelListsSnapshot = x.HasDddPanelListsSnapshot,
+                        DddPanelListsSnapshot = x.DddPanelListsSnapshot ?? "",
+                        HasDddTextEditHistorySnapshot = x.HasDddTextEditHistorySnapshot,
+                        DddTextEditHistorySnapshot = x.DddTextEditHistorySnapshot ?? "",
+                        Frames = x.Frames.Select(CreateFrameDto).ToList()
+                    })
+                    .ToList()
+            };
+
+            using var writer = new Utf8StringWriter();
+            SheetSetSerializer.Serialize(writer, documentDto);
+            return C_toolsTextFileStore.TryWriteAllText(
+                path,
+                writer.ToString(),
+                Encoding.UTF8,
+                operationName);
+        }
+        catch (Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal(logMessage, ex);
+            return false;
+        }
+    }
+
+    private static QqqSavedSheetSetDefinition CloneDefinition(QqqSavedSheetSetDefinition source)
+    {
+        return new QqqSavedSheetSetDefinition
+        {
+            Name = source.Name,
+            HasDddPanelListsSnapshot = source.HasDddPanelListsSnapshot,
+            DddPanelListsSnapshot = source.DddPanelListsSnapshot,
+            HasDddTextEditHistorySnapshot = source.HasDddTextEditHistorySnapshot,
+            DddTextEditHistorySnapshot = source.DddTextEditHistorySnapshot,
+            Frames = source.Frames.Select(CloneFrameInfo).ToList()
+        };
+    }
+
+    private static QqqSavedSheetSetDefinition CloneDefinitionWithoutFrames(QqqSavedSheetSetDefinition source)
+    {
+        return new QqqSavedSheetSetDefinition
+        {
+            Name = source.Name
         };
     }
 

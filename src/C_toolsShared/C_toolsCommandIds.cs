@@ -183,6 +183,8 @@ public static class C_toolsCommandIds
         public const string TextHistoryEdit = "F_ED";
         /// <summary>文字转多行文字</summary>
         public const string TextToMText = "F_TTM";
+        /// <summary>选择文字后插入多重引线</summary>
+        public const string TextToLeader = "F_DDC";
         /// <summary>匹配文字内容</summary>
         public const string TextMatch = "F_AT";
         /// <summary>标注拖拽调整</summary>

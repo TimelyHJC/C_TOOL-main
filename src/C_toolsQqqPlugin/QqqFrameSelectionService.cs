@@ -7,13 +7,6 @@ using AcadRuntimeException = Autodesk.AutoCAD.Runtime.Exception;
 
 namespace C_toolsQqqPlugin;
 
-internal enum QqqRecognitionScope
-{
-    Layout,
-    Model,
-    All
-}
-
 internal sealed class QqqRecognitionTemplateCaptureItem
 {
     public string Name { get; set; } = "";
@@ -70,14 +63,13 @@ internal static class QqqFrameSelectionService
 
     internal static QqqFrameSelectionResult RecognizeFramesByBlockNames(
         Document doc,
-        IEnumerable<string> blockNames,
-        QqqRecognitionScope scope)
+        IEnumerable<string> blockNames)
     {
         var selectedNames = NormalizeNames(blockNames);
         if (selectedNames.Count == 0)
             return new QqqFrameSelectionResult { Message = "请先勾选图框图块后再读取图纸。" };
 
-        return RecognizeFrames(doc, scope, IsMatchedBlock);
+        return RecognizeFrames(doc, IsMatchedBlock);
 
         bool IsMatchedBlock(Entity entity, Transaction transaction)
         {
@@ -90,14 +82,13 @@ internal static class QqqFrameSelectionService
 
     internal static QqqFrameSelectionResult RecognizeFramesByLayerNames(
         Document doc,
-        IEnumerable<string> layerNames,
-        QqqRecognitionScope scope)
+        IEnumerable<string> layerNames)
     {
         var selectedNames = NormalizeNames(layerNames);
         if (selectedNames.Count == 0)
             return new QqqFrameSelectionResult { Message = "请先勾选图框图层后再读取图纸。" };
 
-        return RecognizeFrames(doc, scope, IsMatchedLayer);
+        return RecognizeFrames(doc, IsMatchedLayer);
 
         bool IsMatchedLayer(Entity entity, Transaction _)
         {
@@ -430,7 +421,6 @@ internal static class QqqFrameSelectionService
 
     private static QqqFrameSelectionResult RecognizeFrames(
         Document doc,
-        QqqRecognitionScope scope,
         Func<Entity, Transaction, bool> isMatchedEntity)
     {
         if (doc == null)
@@ -446,8 +436,7 @@ internal static class QqqFrameSelectionService
             foreach (ObjectId blockTableRecordId in blockTable)
             {
                 if (transaction.GetObject(blockTableRecordId, OpenMode.ForRead, false) is not BlockTableRecord blockTableRecord ||
-                    !blockTableRecord.IsLayout ||
-                    !ShouldIncludeLayout(blockTableRecord, transaction, scope))
+                    !blockTableRecord.IsLayout)
                 {
                     continue;
                 }
@@ -507,45 +496,6 @@ internal static class QqqFrameSelectionService
         }
 
         return TryCreatePolylineFrame(entity, transaction, "线框", "闭合图框", "识别列表", out frame) && frame != null;
-    }
-
-    private static bool ShouldIncludeLayout(
-        BlockTableRecord blockTableRecord,
-        Transaction transaction,
-        QqqRecognitionScope scope)
-    {
-        if (scope == QqqRecognitionScope.All)
-            return true;
-
-        try
-        {
-            if (!blockTableRecord.IsLayout ||
-                blockTableRecord.LayoutId.IsNull ||
-                transaction.GetObject(blockTableRecord.LayoutId, OpenMode.ForRead, false) is not Layout layout)
-            {
-                return true;
-            }
-
-            var isModelLayout = string.Equals(layout.LayoutName, "Model", StringComparison.OrdinalIgnoreCase);
-            return scope switch
-            {
-                QqqRecognitionScope.Layout => !isModelLayout,
-                QqqRecognitionScope.Model => isModelLayout,
-                _ => true
-            };
-        }
-        catch (InvalidOperationException)
-        {
-            return true;
-        }
-        catch (AcadRuntimeException)
-        {
-            return true;
-        }
-        catch (ArgumentException)
-        {
-            return true;
-        }
     }
 
     private static HashSet<string> NormalizeNames(IEnumerable<string> names)

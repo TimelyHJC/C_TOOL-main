@@ -11,11 +11,13 @@ internal sealed class AnnotationScaleSnapshot
     internal AnnotationScaleSnapshot(
         IReadOnlyList<AnnotationScaleGroupInfo> groups,
         IReadOnlyList<AnnotationScaleListItem> allScales,
-        string currentScaleName)
+        string currentScaleName,
+        string currentDimStyleName = "")
     {
         Groups = groups;
         AllScales = allScales;
         CurrentScaleName = currentScaleName ?? "";
+        CurrentDimStyleName = currentDimStyleName ?? "";
     }
 
     internal IReadOnlyList<AnnotationScaleGroupInfo> Groups { get; }
@@ -23,6 +25,15 @@ internal sealed class AnnotationScaleSnapshot
     internal IReadOnlyList<AnnotationScaleListItem> AllScales { get; }
 
     internal string CurrentScaleName { get; }
+
+    internal string CurrentDimStyleName { get; }
+
+    internal string? CurrentGroupPrefix => AnnotationScaleGrouping.GetBasePrefix(CurrentDimStyleName);
+
+    internal bool? CurrentPrefersInnerDimStyle =>
+        string.IsNullOrWhiteSpace(CurrentDimStyleName)
+            ? null
+            : AnnotationScaleGrouping.HasInnerSuffix(CurrentDimStyleName);
 }
 
 internal sealed class AnnotationScaleListItem
@@ -380,7 +391,7 @@ internal static class AnnotationScaleGrouping
         return match.Success && match.Value == trimmed;
     }
 
-    private static bool HasInnerSuffix(string scaleName)
+    internal static bool HasInnerSuffix(string scaleName)
     {
         var trimmed = scaleName?.Trim() ?? "";
         if (trimmed.Length == 0)
