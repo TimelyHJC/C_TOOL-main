@@ -9,6 +9,7 @@ namespace QlPlugin;
 /// </summary>
 public class QlCommand
 {
+    [CommandMethod("F_QL", CommandFlags.Modal | CommandFlags.UsePickSet)]
     [CommandMethod("QL", CommandFlags.Modal | CommandFlags.UsePickSet)]
     public void ShowBlockList()
     {
@@ -40,9 +41,11 @@ public class QlCommand
             Autodesk.AutoCAD.ApplicationServices.Application.ShowModalDialog(form);
 
             // 若用户双击图块名称插入，执行插入
-            if (!string.IsNullOrEmpty(form.BlockNameToInsert))
+            var blockNameToInsert = form.BlockNameToInsert;
+            if (!string.IsNullOrEmpty(blockNameToInsert))
             {
-                var (success, msg) = BlockInserter.InsertBlock(form.BlockNameToInsert);
+                var blockName = blockNameToInsert!;
+                var (success, msg) = BlockInserter.InsertBlock(blockName);
                 if (!success)
                     Autodesk.AutoCAD.ApplicationServices.Application.ShowAlertDialog(msg);
             }

@@ -82,7 +82,10 @@ internal static class PluginCommandIds
     /// <summary>调用原生 DRAWORDER，将所选对象置于绘图次序顶层。</summary>
     internal const string DrawOrderFront = C_toolsCommandIds.MainToolset.DrawOrderFront;
 
-    /// <summary>调用原生 DRAWORDER，将所选对象置于绘图次序顶层。</summary>
+    /// <summary>根据所选填充图案调用原生命令生成边界。</summary>
+    internal const string HatchBoundary = C_toolsCommandIds.MainToolset.HatchBoundary;
+
+    /// <summary>历史别名：F_HB。</summary>
     internal const string DrawOrderFrontAlt = C_toolsCommandIds.MainToolset.DrawOrderFrontAlt;
 
     /// <summary>快速箭头：第一点为箭尾、第二点为箭头；取点时按 S 可设置箭尾显示文字。</summary>

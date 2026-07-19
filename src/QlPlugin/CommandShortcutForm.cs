@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Drawing;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.Runtime;
 
@@ -21,7 +22,7 @@ public class CommandShortcutForm : Form
 
     private static readonly List<CommandInfo> Commands =
     [
-        new("QL", "图块列表", "显示图块列表，按大小排序。先选中对象则只显示选中图块。双击可插入图块。"),
+        new("F_QL", "图块列表", "显示图块列表，按大小排序。先选中对象则只显示选中图块。双击可插入图块。"),
         new("QLL", "一键清理", "执行 AUDIT、PURGE、RegApps、OVERKILL 清理 DWG 文件。先选中对象则先对选中执行 OVERKILL。"),
         new("KKK", "快捷命令", "打开本页面，查看和修改命令快捷方式。")
     ];
@@ -32,7 +33,8 @@ public class CommandShortcutForm : Form
         Size = new Size(650, 480);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;
-        MinimumSize = new Size(500, 400);
+        MinimumSize = new Size(650, 420);
+        QlCadTheme.ApplyWindow(this);
 
         _grid = new DataGridView
         {
@@ -41,9 +43,8 @@ public class CommandShortcutForm : Form
             AllowUserToAddRows = false,
             ReadOnly = true,
             RowHeadersVisible = false,
-            BackgroundColor = Color.White,
-            Font = new Font("Microsoft YaHei UI", 9)
         };
+        QlCadTheme.ApplyGrid(_grid);
         _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "命令", Width = 80, DataPropertyName = "Command" });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "说明", Width = 200, DataPropertyName = "Description", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "快捷命令", Width = 100, DataPropertyName = "Shortcut" });
@@ -51,13 +52,15 @@ public class CommandShortcutForm : Form
         _grid.DataSource = Commands.Select(c => new { c.Command, c.Description, Shortcut = c.Command }).ToList();
 
         var btnFont = new Font("Microsoft YaHei UI", 10.5f);
-        var lblCustom = new Label { Text = "自定义快捷键（支持本插件及任意其他插件。点击「写入 PGP」可追加到文件末尾，优先级最高）", Dock = DockStyle.Bottom, Height = 26, Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold) };
-        var panelCustom = new Panel { Dock = DockStyle.Bottom, Height = 170 };
+        var lblCustom = new Label { Text = "自定义快捷键（支持本插件及任意其他插件。点击「写入 PGP」可追加到文件末尾，优先级最高）", Dock = DockStyle.Bottom, Height = 34, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0), AutoEllipsis = true };
+        QlCadTheme.ApplyLabel(lblCustom, header: true);
+        var panelCustom = new Panel { Dock = DockStyle.Bottom, Height = 178 };
+        QlCadTheme.ApplyToolbar(panelCustom);
         var lblAlias = new Label { Text = "快捷键:", Location = new Point(8, 14), AutoSize = true, Font = btnFont };
         _txtAlias = new TextBox { Width = 90, Height = 28, Location = new Point(70, 10), Font = btnFont };
         var lblCmd = new Label { Text = "命令:", Location = new Point(170, 14), AutoSize = true, Font = btnFont };
         _cmbCommand = new ComboBox { Width = 160, Height = 28, Location = new Point(220, 10), DropDownStyle = ComboBoxStyle.DropDown, Font = btnFont };
-        _cmbCommand.Text = "QL";
+        _cmbCommand.Text = "F_QL";
         _btnAdd = new Button { Text = "添加", Size = new Size(70, 36), Location = new Point(390, 8), Font = btnFont };
         var btnLoadCmds = new Button { Text = "加载全部命令", Size = new Size(120, 36), Location = new Point(470, 8), Font = btnFont };
         _lstCustom = new ListBox { Width = 220, Height = 100, Location = new Point(8, 52), Font = btnFont };
@@ -65,6 +68,21 @@ public class CommandShortcutForm : Form
         _btnCopyPgp = new Button { Text = "复制 PGP 内容", Size = new Size(130, 36), Location = new Point(350, 52), Font = btnFont };
         _btnOpenPgp = new Button { Text = "打开 PGP 文件", Size = new Size(120, 36), Location = new Point(490, 52), Font = btnFont };
         var btnWritePgp = new Button { Text = "写入 PGP（末尾追加，优先级最高）", Size = new Size(280, 36), Location = new Point(240, 96), Font = btnFont };
+
+        foreach (var label in new[] { lblAlias, lblCmd })
+        {
+            QlCadTheme.ApplyLabel(label);
+        }
+
+        QlCadTheme.ApplyTextBox(_txtAlias);
+        QlCadTheme.ApplyComboBox(_cmbCommand);
+        QlCadTheme.ApplyListBox(_lstCustom);
+        QlCadTheme.ApplyButton(_btnAdd, primary: true);
+        QlCadTheme.ApplyButton(btnLoadCmds);
+        QlCadTheme.ApplyButton(_btnRemove);
+        QlCadTheme.ApplyButton(_btnCopyPgp);
+        QlCadTheme.ApplyButton(_btnOpenPgp);
+        QlCadTheme.ApplyButton(btnWritePgp, primary: true);
 
         _btnAdd.Click += BtnAdd_Click;
         _btnRemove.Click += BtnRemove_Click;
@@ -76,6 +94,22 @@ public class CommandShortcutForm : Form
         LoadCommandList();
 
         panelCustom.Controls.AddRange([lblAlias, _txtAlias, lblCmd, _cmbCommand, _btnAdd, btnLoadCmds, _lstCustom, _btnRemove, _btnCopyPgp, _btnOpenPgp, btnWritePgp]);
+        panelCustom.Paint += (_, e) =>
+        {
+            using var pen = new Pen(QlCadTheme.StatusLine);
+            e.Graphics.DrawLine(pen, 0, 0, panelCustom.Width, 0);
+        };
+        panelCustom.Resize += (_, _) => ArrangeShortcutPanelButtons();
+        ArrangeShortcutPanelButtons();
+
+        void ArrangeShortcutPanelButtons()
+        {
+            var right = panelCustom.ClientSize.Width - panelCustom.Padding.Right;
+            _btnOpenPgp.Left = Math.Max(350, right - _btnOpenPgp.Width);
+            _btnCopyPgp.Left = _btnOpenPgp.Left - _btnCopyPgp.Width - 10;
+            btnLoadCmds.Left = Math.Max(_btnAdd.Right + 10, right - btnLoadCmds.Width);
+            btnWritePgp.Left = Math.Max(_btnRemove.Right + 10, right - btnWritePgp.Width);
+        }
 
         Controls.Add(_grid);
         Controls.Add(panelCustom);
@@ -217,7 +251,7 @@ public class CommandShortcutForm : Form
         _cmbCommand.Items.AddRange(Commands.Select(c => c.Command).ToArray());
         _cmbCommand.Items.Add("--- 常用 CAD 命令 ---");
         _cmbCommand.Items.AddRange(CommonCommands);
-        _cmbCommand.Text = "QL";
+        _cmbCommand.Text = "F_QL";
     }
 
     private void BtnLoadCmds_Click(object? sender, EventArgs e)
@@ -233,7 +267,10 @@ public class CommandShortcutForm : Form
             _cmbCommand.Items.Clear();
             _cmbCommand.Items.Add("--- 全部命令 ---");
             _cmbCommand.Items.AddRange(sorted.ToArray());
-            _cmbCommand.Text = sorted.FirstOrDefault(s => s == "QL") ?? sorted.FirstOrDefault() ?? "";
+            _cmbCommand.Text = sorted.FirstOrDefault(s => s == "F_QL")
+                ?? sorted.FirstOrDefault(s => s == "QL")
+                ?? sorted.FirstOrDefault()
+                ?? "";
             var gridData = Commands.Select(c => new { c.Command, c.Description, Shortcut = c.Command }).ToList();
             gridData.AddRange(sorted.Except(Commands.Select(x => x.Command), StringComparer.OrdinalIgnoreCase)
                 .Select(c => new { Command = c, Description = GetCommandDescription(c), Shortcut = c }));

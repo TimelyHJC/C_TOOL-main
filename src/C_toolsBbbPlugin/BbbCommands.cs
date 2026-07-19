@@ -42,6 +42,14 @@ public class BbbCommands
             (doc, _) => BbbDeviceBlockCreateService.Run(doc));
     }
 
+    [CommandMethod(BbbPluginCommandIds.CommandGroup, BbbPluginCommandIds.BlockAttributeRefresh, CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void RefreshBlockAttributes()
+    {
+        CadCommandContext.ExecuteInActiveDocument(
+            "刷新图块增强属性",
+            (doc, _) => BbbBlockAttributeRefreshService.Run(doc));
+    }
+
     internal static void CloseBbbPanelIfAny()
     {
         CloseHost(s_hiddenDevicePanelHost, "关闭 V_BBB 设备清单浮窗失败");

@@ -1126,6 +1126,7 @@ internal static class QqqPlotService
         validator.RefreshLists(settings);
 
         var resolvedMediaName = "";
+        var applyExplicitPlotOptions = false;
         if (TryApplyNamedPageSetup(transaction, layout.Database, options.PageSetupName, settings))
         {
             validator.RefreshLists(settings);
@@ -1134,6 +1135,7 @@ internal static class QqqPlotService
         }
         else if (!options.UseCadPlotSettings)
         {
+            applyExplicitPlotOptions = true;
             validator.SetPlotConfigurationName(settings, options.PrinterName.Trim(), null);
             validator.RefreshLists(settings);
 
@@ -1150,10 +1152,22 @@ internal static class QqqPlotService
                 validator.SetCurrentStyleSheet(settings, styleSheet);
                 settings.PlotPlotStyles = true;
             }
+        }
+        else
+        {
+            EnsureValidCadPlotSettings(layout, settings);
+            resolvedMediaName = settings.CanonicalMediaName ?? "";
+        }
 
+        // AutoCAD validates centering against the active plot type/window.
+        // Apply the window first, especially for model-space window plots.
+        ApplyPlotWindowArea(settings, validator, layout, editor, frame.WcsExtents);
+
+        if (applyExplicitPlotOptions)
+        {
+            validator.SetPlotPaperUnits(settings, PlotPaperUnit.Millimeters);
             ApplyScaleSettings(settings, validator, options);
             validator.SetPlotCentered(settings, options.CenterPlot);
-            validator.SetPlotPaperUnits(settings, PlotPaperUnit.Millimeters);
             if (!options.CenterPlot)
                 validator.SetPlotOrigin(settings, new Point2d(options.OffsetX, options.OffsetY));
             validator.SetPlotRotation(settings, DetermineRotation(frame, options, resolvedMediaName));
@@ -1164,13 +1178,7 @@ internal static class QqqPlotService
             settings.PlotHidden = false;
             settings.PlotViewportBorders = false;
         }
-        else
-        {
-            EnsureValidCadPlotSettings(layout, settings);
-            resolvedMediaName = settings.CanonicalMediaName ?? "";
-        }
 
-        ApplyPlotWindowArea(settings, validator, layout, editor, frame.WcsExtents);
         return settings;
     }
 
@@ -1181,18 +1189,17 @@ internal static class QqqPlotService
         Editor editor,
         Extents3d extents)
     {
-        validator.SetPlotType(settings, Autodesk.AutoCAD.DatabaseServices.PlotType.Window);
         try
         {
             validator.SetPlotWindowArea(settings, ConvertWindowToDcs(editor, extents));
-            return;
         }
         catch (Exception ex) when (layout.ModelType && IsPlotWindowCompatibilityException(ex))
         {
             C_toolsDiagnostics.LogNonFatal("V_QQQ 模型空间 DCS 打印窗口不可用，尝试模型坐标窗口兼容方式", ex);
+            validator.SetPlotWindowArea(settings, ConvertExtentsToWindow(extents));
         }
 
-        validator.SetPlotWindowArea(settings, ConvertExtentsToWindow(extents));
+        validator.SetPlotType(settings, Autodesk.AutoCAD.DatabaseServices.PlotType.Window);
     }
 
     private static bool TryApplyNamedPageSetup(

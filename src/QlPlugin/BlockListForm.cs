@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Windows.Forms;
 
 namespace QlPlugin;
@@ -29,23 +30,24 @@ public class BlockListForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimumSize = new Size(500, 350);
+        QlCadTheme.ApplyWindow(this);
 
         _lblTitle = new Label
         {
             Text = fromSelection ? $"共 {blocks.Count} 个选中图块" : $"共 {blocks.Count} 个图块（按大小排序）",
-            Dock = DockStyle.Top,
-            Height = 30,
-            Padding = new Padding(8, 8, 0, 0),
-            Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold)
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleLeft
         };
+        QlCadTheme.ApplyLabel(_lblTitle, header: true);
 
         _btnDelete = new Button
         {
             Text = "删除选中图块",
-            Size = new Size(120, 32),
+            Size = new Size(128, 34),
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-            Font = new Font("Microsoft YaHei UI", 9)
         };
+        QlCadTheme.ApplyButton(_btnDelete);
         _btnDelete.Click += BtnDelete_Click;
 
         _grid = new DataGridView
@@ -59,14 +61,8 @@ public class BlockListForm : Form
             MultiSelect = true,
             RowHeadersVisible = false,
             AllowUserToResizeRows = false,
-            BackgroundColor = Color.White,
-            BorderStyle = BorderStyle.None,
-            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
-            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
-            EnableHeadersVisualStyles = true,
-            GridColor = Color.FromArgb(240, 240, 240),
-            Font = new Font("Microsoft YaHei UI", 9)
         };
+        QlCadTheme.ApplyGrid(_grid);
 
         // 列定义
         _grid.Columns.Add(new DataGridViewTextBoxColumn
@@ -115,14 +111,24 @@ public class BlockListForm : Form
 
         _grid.CellDoubleClick += Grid_CellDoubleClick;
 
-        var panel = new Panel { Dock = DockStyle.Bottom, Height = 45 };
+        var toolbar = new Panel { Dock = DockStyle.Top, Height = 54 };
+        QlCadTheme.ApplyToolbar(toolbar);
+        toolbar.Controls.Add(_lblTitle);
+
+        var panel = new Panel { Dock = DockStyle.Bottom, Height = 54 };
+        QlCadTheme.ApplyStatusPanel(panel);
         panel.Controls.Add(_btnDelete);
-        panel.Resize += (_, _) => _btnDelete.Location = new Point(panel.Width - 130, 6);
-        _btnDelete.Location = new Point(panel.Width - 130, 6);
+        panel.Paint += (_, e) =>
+        {
+            using var pen = new Pen(QlCadTheme.StatusLine);
+            e.Graphics.DrawLine(pen, 0, 0, panel.Width, 0);
+        };
+        panel.Resize += (_, _) => _btnDelete.Location = new Point(panel.Width - _btnDelete.Width - 14, 10);
+        _btnDelete.Location = new Point(panel.Width - _btnDelete.Width - 14, 10);
 
         Controls.Add(_grid);
         Controls.Add(panel);
-        Controls.Add(_lblTitle);
+        Controls.Add(toolbar);
 
         RefreshGrid();
     }

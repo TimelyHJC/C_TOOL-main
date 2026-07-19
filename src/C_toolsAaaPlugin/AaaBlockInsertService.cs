@@ -129,7 +129,7 @@ internal static class AaaBlockInsertService
 
             var libraryRootPath = ResolveLibraryRootPath(item);
             if (libraryRootPath.Length == 0 || !Directory.Exists(libraryRootPath))
-                return AaaInsertResult.Failure("组合定义未关联到有效的单块图库。");
+                return AaaInsertResult.Failure("组合定义未关联到有效的独立图库。");
 
             var singleBlocks = AaaComboLibraryReferenceResolver.LoadSingleBlocks(libraryRootPath);
             var resolvedMembers = ResolveComboMembers(item, manifest, singleBlocks, libraryRootPath, out var missingDevices);
@@ -138,7 +138,7 @@ internal static class AaaBlockInsertService
             if (missingDevices.Count > 0)
             {
                 var details = string.Join("、", missingDevices.Take(5));
-                return AaaInsertResult.Failure($"组合成员未在单块图库中找到：{details}");
+                return AaaInsertResult.Failure($"组合成员未在独立图库中找到：{details}");
             }
 
             using var documentLock = doc.LockDocument();

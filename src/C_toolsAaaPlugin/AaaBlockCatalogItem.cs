@@ -35,7 +35,7 @@ internal sealed class AaaBlockCatalogItem
 
     public string TypeText => IsCombo ? "组合" : "图块";
 
-    public string LibraryCategoryText => IsCombo ? "组合图库" : "单块图库";
+    public string LibraryCategoryText => IsCombo ? "组合图库" : "独立图库";
 
     public string PreviewAssetPath =>
         string.IsNullOrWhiteSpace(PreviewSourcePath) ? FullPath : PreviewSourcePath;

@@ -27,6 +27,22 @@ public class ColorShortcutInputStateTests
     }
 
     [TestMethod]
+    public void ProcessVirtualKey_DigitsThenSpace_AppliesColor()
+    {
+        var state = new ColorShortcutInputState();
+
+        var first = state.ProcessVirtualKey(Key1);
+        var second = state.ProcessVirtualKey(Key2);
+        var space = state.ProcessVirtualKey(ColorShortcutService.VirtualKeys.Space);
+
+        Assert.IsTrue(first.Handled);
+        Assert.IsTrue(second.Handled);
+        Assert.IsTrue(space.Handled);
+        Assert.AreEqual("12", space.ColorTextToApply);
+        Assert.AreEqual(0, state.BufferLength);
+    }
+
+    [TestMethod]
     public void ProcessVirtualKey_LetterThenDigit_PassesThroughCommandText()
     {
         var state = new ColorShortcutInputState();

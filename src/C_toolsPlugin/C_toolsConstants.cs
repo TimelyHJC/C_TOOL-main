@@ -60,6 +60,7 @@ internal static class CommandNames
     internal const string DrawOrder = "_.DRAWORDER";
     internal const string DrawOrderFrontOption = "_Front";
     internal const string DrawOrderBackOption = "_Back";
+    internal const string HatchGenerateBoundary = "_.HATCHGENERATEBOUNDARY";
     internal const string Xline = "_.XLINE";
     internal const string XlineHorizontalOption = "_H";
     internal const string XlineVerticalOption = "_V";

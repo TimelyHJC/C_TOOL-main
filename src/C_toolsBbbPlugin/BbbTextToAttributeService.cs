@@ -12,7 +12,6 @@ internal static class BbbTextToAttributeService
 {
     private const string DefaultAttributeName = "设备名称";
     private const string BlockNamePrefix = "C_TOOL_BBB_ZSX_";
-    private static string s_currentAttributeName = DefaultAttributeName;
 
     internal static void Run(Document doc)
     {
@@ -24,9 +23,7 @@ internal static class BbbTextToAttributeService
             if (selectedIds == null || selectedIds.Count == 0)
                 return;
 
-            var attributeName = PromptForAttributeName(editor);
-            if (attributeName == null)
-                return;
+            var attributeName = DefaultAttributeName;
 
             var conversionResult = CadDatabaseScope.Write(
                 doc,
@@ -127,56 +124,6 @@ internal static class BbbTextToAttributeService
         }
 
         return picked.Value.GetObjectIds();
-    }
-
-    private static string? PromptForAttributeName(Editor editor)
-    {
-        while (true)
-        {
-            var keywordOptions = new PromptKeywordOptions($"\n当前标记为：{s_currentAttributeName}，按 S 可修改，回车继续：")
-            {
-                AllowNone = true
-            };
-            keywordOptions.Keywords.Add("S");
-
-            var keywordResult = editor.GetKeywords(keywordOptions);
-            if (keywordResult.Status == PromptStatus.Cancel)
-            {
-                editor.WriteMessage($"\n{UIMessages.Prefix_F_zsx}{UIMessages.Common.Cancelled}");
-                return null;
-            }
-
-            if (keywordResult.Status == PromptStatus.None)
-                return s_currentAttributeName;
-
-            if (!string.Equals(keywordResult.StringResult, "S", StringComparison.OrdinalIgnoreCase))
-                return s_currentAttributeName;
-
-            var stringOptions = new PromptStringOptions($"\n请输入新的属性标记 <{s_currentAttributeName}>：")
-            {
-                AllowSpaces = true
-            };
-
-            var stringResult = editor.GetString(stringOptions);
-            if (stringResult.Status == PromptStatus.Cancel)
-            {
-                editor.WriteMessage($"\n{UIMessages.Prefix_F_zsx}{UIMessages.Common.Cancelled}");
-                return null;
-            }
-
-            if (stringResult.Status == PromptStatus.None)
-                return s_currentAttributeName;
-
-            var candidate = (stringResult.StringResult ?? "").Trim();
-            if (candidate.Length == 0)
-            {
-                editor.WriteMessage("\nF_zsx：属性标记不能为空。");
-                continue;
-            }
-
-            s_currentAttributeName = candidate;
-            return s_currentAttributeName;
-        }
     }
 
     private static SelectionFilter BuildTextSelectionFilter()

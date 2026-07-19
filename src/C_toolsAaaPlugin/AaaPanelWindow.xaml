@@ -606,9 +606,9 @@
                     Margin="0,0,8,0"
                     Click="ImportCurrentLibrary_Click"
                     ToolTipService.ShowOnDisabled="True">
-              <ContentControl Style="{StaticResource CadImportIconControl}"
-                              Width="18"
-                              Height="18"
+              <ContentControl Style="{StaticResource CadAddIconControl}"
+                              Width="16"
+                              Height="16"
                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground, FallbackValue={StaticResource Cad.Muted}, TargetNullValue={StaticResource Cad.Muted}}" />
             </Button>
             <Button x:Name="UpdateBlocksFromDrawingButton"

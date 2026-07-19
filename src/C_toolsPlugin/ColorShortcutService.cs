@@ -271,7 +271,7 @@ internal static partial class ColorShortcutService
         var implied = ed.SelectImplied();
         if (implied.Status != PromptStatus.OK || implied.Value == null || implied.Value.Count == 0)
         {
-            ed.WriteMessage("\nC_TOOL：颜色快捷：请先选中对象，再输入 1-255 并回车。");
+            ed.WriteMessage("\nC_TOOL：颜色快捷：请先选中对象，再输入 1-255 并回车或空格。");
             return;
         }
 

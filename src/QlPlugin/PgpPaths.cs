@@ -16,7 +16,7 @@ public static class PgpPaths
     public static IEnumerable<string> GetAllPgpPaths()
     {
         var autodesk = FindAutodeskPgpPath();
-        if (!string.IsNullOrEmpty(autodesk)) yield return autodesk;
+        if (autodesk is not null && autodesk.Length > 0) yield return autodesk;
         if (File.Exists(HaiLongPgp)) yield return HaiLongPgp;
     }
 

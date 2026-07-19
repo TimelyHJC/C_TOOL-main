@@ -55,6 +55,9 @@ internal static class DddPluginCommandIds
     /// <summary>DD 插件：选择来源文字后，将目标文字内容匹配为来源内容。</summary>
     internal const string TextMatch = C_toolsCommandIds.Ddd.TextMatch;
 
+    /// <summary>DD 插件：将单行/多行文字的对齐方式快速改为中间。</summary>
+    internal const string TextMiddleAlign = C_toolsCommandIds.Ddd.TextMiddleAlign;
+
     /// <summary>DD 插件：选取线性/对齐标注、文字、引线或多重引线后，拖拽预览并快速调整位置。</summary>
     internal const string DimShift = C_toolsCommandIds.Ddd.DimShift;
 

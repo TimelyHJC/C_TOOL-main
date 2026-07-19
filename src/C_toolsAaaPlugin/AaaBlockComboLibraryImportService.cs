@@ -251,8 +251,8 @@ internal static class AaaBlockComboLibraryImportService
                 .Take(5));
             throw new InvalidOperationException(
                 details.Length == 0
-                    ? "单块图库中未找到对应图块，无法创建组合定义。"
-                    : $"单块图库中未找到对应图块：{details}");
+                    ? "独立图库中未找到对应图块，无法创建组合定义。"
+                    : $"独立图库中未找到对应图块：{details}");
         }
 
         if (missingDevices.Count > 0)
@@ -261,7 +261,7 @@ internal static class AaaBlockComboLibraryImportService
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(5));
-            throw new InvalidOperationException($"以下图块未在单块图库中找到：{details}");
+            throw new InvalidOperationException($"以下图块未在独立图库中找到：{details}");
         }
 
         AaaBlockComboPackageStore.Save(comboPath, manifest);

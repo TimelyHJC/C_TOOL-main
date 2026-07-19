@@ -170,6 +170,15 @@ public class DddCommands
         DddTextMatchService.Run(doc);
     }
 
+    [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.TextMiddleAlign, CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void F_TmTextMiddleAlign()
+    {
+        var doc = AcAp.DocumentManager.MdiActiveDocument;
+        if (doc == null)
+            return;
+        DddTextMiddleAlignService.Run(doc);
+    }
+
     [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.DimShift, CommandFlags.Modal | CommandFlags.UsePickSet)]
     public void F_DsShiftDimensionPosition()
     {

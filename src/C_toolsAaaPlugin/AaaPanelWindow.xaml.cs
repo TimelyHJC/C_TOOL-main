@@ -20,11 +20,11 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
     private const string InitialStatusText = "请选择图块文件夹。";
     private const string SelectFolderTooltip = "请先选择有效的图块文件夹。";
     private const string RefreshFolderTooltip = "重新读取当前图库目录。";
-    private const string ImportBlocksTooltip = "当前显示单块图库。隐藏面板后可在当前图纸中点选或框选多个图块，并添加到当前图库目录。";
+    private const string ImportBlocksTooltip = "当前显示独立图库。隐藏面板后可在当前图纸中点选或框选多个图块，并添加到当前图库目录。";
     private const string ImportComboTooltip = "当前显示组合图库。隐藏面板后可在当前图纸中多选图块，输入组合名称并添加为组合定义。";
-    private const string UpdateBlocksTooltip = "当前显示单块图库。隐藏面板后可在当前图纸中选择新块，并按设备名称替换图库内时间戳不同的旧块。";
+    private const string UpdateBlocksTooltip = "当前显示独立图库。隐藏面板后可在当前图纸中选择新块，并按设备名称替换图库内时间戳不同的旧块。";
     private const string UpdateComboTooltip = "当前显示组合图库。隐藏面板后可在当前图纸中多选图块，输入组合名称与基点，并按设备名称替换图库内时间戳不同的旧组合定义。";
-    private const string UpdateBlocksEmptyTooltip = "当前单块图库中没有可更新的图块。";
+    private const string UpdateBlocksEmptyTooltip = "当前独立图库中没有可更新的图块。";
     private const string UpdateComboEmptyTooltip = "当前组合图库中没有可更新的组合定义。";
     private readonly ObservableCollection<AaaBlockCatalogItem> _blocks = new();
     private readonly ObservableCollection<AaaFavoriteFolderItem> _favoriteFolders = new();
@@ -719,15 +719,15 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         {
             new()
             {
-                Key = AaaCategoryTagItem.ComboLibraryKey,
-                DisplayName = "组合图库",
-                Count = items.Count(x => x.IsCombo)
+                Key = AaaCategoryTagItem.SingleLibraryKey,
+                DisplayName = "独立图库",
+                Count = items.Count(x => !x.IsCombo)
             },
             new()
             {
-                Key = AaaCategoryTagItem.SingleLibraryKey,
-                DisplayName = "单块图库",
-                Count = items.Count(x => !x.IsCombo)
+                Key = AaaCategoryTagItem.ComboLibraryKey,
+                DisplayName = "组合图库",
+                Count = items.Count(x => x.IsCombo)
             }
         };
     }
@@ -737,7 +737,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         return categoryKey switch
         {
             AaaCategoryTagItem.ComboLibraryKey => "组合图库",
-            AaaCategoryTagItem.SingleLibraryKey => "单块图库",
+            AaaCategoryTagItem.SingleLibraryKey => "独立图库",
             _ => ""
         };
     }

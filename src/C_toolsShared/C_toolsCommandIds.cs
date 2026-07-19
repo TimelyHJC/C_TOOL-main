@@ -85,8 +85,10 @@ public static class C_toolsCommandIds
         public const string DrawOrderBack = "F_WB";
         /// <summary>对象绘图次序前置</summary>
         public const string DrawOrderFront = "F_SB";
-        /// <summary>对象绘图次序前置</summary>
-        public const string DrawOrderFrontAlt = "F_HB";
+        /// <summary>根据填充生成边界</summary>
+        public const string HatchBoundary = "F_HB";
+        /// <summary>历史常量名：F_HB 现用于根据填充生成边界。</summary>
+        public const string DrawOrderFrontAlt = HatchBoundary;
         /// <summary>快捷箭头</summary>
         public const string QuickArrow = "F_JT";
         /// <summary>快捷墙体</summary>
@@ -140,6 +142,8 @@ public static class C_toolsCommandIds
         public const string TextToAttribute = "F_zsx";
         /// <summary>创建设备块</summary>
         public const string DeviceBlockCreate = "F_AB";
+        /// <summary>刷新选中图块的增强属性显示</summary>
+        public const string BlockAttributeRefresh = "F_BV";
         /// <summary>历史命令：块分配隐藏设备名（已停用）</summary>
         public const string BlockAssignHiddenDeviceNames = "F_BXR";
         /// <summary>历史命令：按映射汇总设备名并导出表格（已停用）</summary>
@@ -187,6 +191,8 @@ public static class C_toolsCommandIds
         public const string TextToLeader = "F_DDC";
         /// <summary>匹配文字内容</summary>
         public const string TextMatch = "F_AT";
+        /// <summary>文字对齐方式改为中间</summary>
+        public const string TextMiddleAlign = "F_TM";
         /// <summary>标注拖拽调整</summary>
         public const string DimShift = "F_DS";
         /// <summary>标注水平拖拽</summary>

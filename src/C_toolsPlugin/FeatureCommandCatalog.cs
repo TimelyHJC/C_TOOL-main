@@ -52,6 +52,7 @@ internal static class FeatureCommandCatalog
         Visible(C_toolsCommandIds.Bbb.Main, "打开设备清单输出浮窗，可读取图块显示设备名称并写入 Excel 设备清单"),
         VisibleOther(C_toolsCommandIds.Bbb.TextToAttribute, "快速把选中的 DBText/MText 转成带“设备名称”属性的块参照", C_toolsCommandIds.Bbb.Main),
         VisibleOther(C_toolsCommandIds.Bbb.DeviceBlockCreate, "选择对象创建成设备块，弹窗以九宫格指定基点，块名可从 CAD 文字拾取", C_toolsCommandIds.Bbb.Main),
+        VisibleOther(C_toolsCommandIds.Bbb.BlockAttributeRefresh, "选择图块并同步块定义中的增强属性，让新增或调整后的属性文字立即显示", C_toolsCommandIds.Bbb.Main),
 
         Hidden(C_toolsCommandIds.Ddd.AliasShort),
         VisibleRibbon(C_toolsCommandIds.Ddd.Main, "打开 V_DDD", "打开文字标注浮窗，提供多重引线、智能标注与文字处理工具"),
@@ -71,6 +72,7 @@ internal static class FeatureCommandCatalog
         VisibleRibbon(C_toolsCommandIds.Ddd.TextToMText, "单转多", "文字工具：启动 AutoCAD 原生 TXT2MTXT，将单行文字转换为多行文字", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.TextToLeader, "文字引线", "文字工具：选择单行/多行文字后，按 V_DDD 当前多重引线样式与版式插入多重引线", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.TextMatch, "匹配文字", "文字工具：选择来源文字对象后，将目标文字内容匹配为来源内容；支持预选目标", C_toolsCommandIds.Ddd.Main),
+        VisibleRibbon(C_toolsCommandIds.Ddd.TextMiddleAlign, "文字居中", "文字工具：将所选单行/多行文字的对齐方式快速修改为中间；支持预选文字", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.DimShift, "上下快调", "智能标注工具：选中线性/对齐标注、文字、引线或多重引线后，拖拽预览并快速调整位置", C_toolsCommandIds.Ddd.Main),
         VisibleRibbon(C_toolsCommandIds.Ddd.DimShiftHorizontal, "左右快调", "智能标注工具：选中线性/对齐标注、文字、引线或多重引线后，拖拽预览并左右快速调整位置", C_toolsCommandIds.Ddd.Main),
 
