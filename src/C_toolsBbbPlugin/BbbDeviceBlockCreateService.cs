@@ -400,7 +400,7 @@ internal static class BbbDeviceBlockCreateService
                 var existingBlockId = blockTable.Has(normalizedName) ? blockTable[normalizedName] : ObjectId.Null;
                 var replacedExisting = !existingBlockId.IsNull;
                 var blockId = existingBlockId.IsNull
-                    ? CreateBlockDefinition(blockTable, transaction, normalizedName)
+                    ? CreateBlockDefinition(blockTable, transaction, normalizedName, basePoint)
                     : existingBlockId;
                 var blockDefinition = CadDatabaseScope.OpenAs<BlockTableRecord>(transaction, blockId, OpenMode.ForWrite);
                 if (replacedExisting)
@@ -411,7 +411,9 @@ internal static class BbbDeviceBlockCreateService
                     ClearBlockDefinitionContents(blockDefinition, transaction);
                 }
 
-                var clonedCount = CloneEntitiesIntoBlock(entities, blockDefinition, transaction, basePoint);
+                blockDefinition.Origin = basePoint;
+
+                var clonedCount = CloneEntitiesIntoBlock(entities, blockDefinition, transaction);
                 if (clonedCount == 0)
                     throw new InvalidOperationException("未能复制所选对象到设备块定义。");
 
@@ -554,7 +556,11 @@ internal static class BbbDeviceBlockCreateService
         return entities;
     }
 
-    private static ObjectId CreateBlockDefinition(BlockTable blockTable, Transaction transaction, string blockName)
+    private static ObjectId CreateBlockDefinition(
+        BlockTable blockTable,
+        Transaction transaction,
+        string blockName,
+        Point3d basePoint)
     {
         if (!blockTable.IsWriteEnabled)
             blockTable.UpgradeOpen();
@@ -562,7 +568,7 @@ internal static class BbbDeviceBlockCreateService
         using var blockDefinition = new BlockTableRecord
         {
             Name = blockName,
-            Origin = Point3d.Origin
+            Origin = basePoint
         };
 
         var blockId = blockTable.Add(blockDefinition);
@@ -716,17 +722,14 @@ internal static class BbbDeviceBlockCreateService
     private static int CloneEntitiesIntoBlock(
         IEnumerable<Entity> entities,
         BlockTableRecord blockDefinition,
-        Transaction transaction,
-        Point3d basePoint)
+        Transaction transaction)
     {
         var clonedCount = 0;
-        var toLocal = Matrix3d.Displacement(Point3d.Origin - basePoint);
         foreach (var entity in entities)
         {
             if (entity.Clone() is not Entity clone)
                 continue;
 
-            clone.TransformBy(toLocal);
             blockDefinition.AppendEntity(clone);
             transaction.AddNewlyCreatedDBObject(clone, true);
             clonedCount++;

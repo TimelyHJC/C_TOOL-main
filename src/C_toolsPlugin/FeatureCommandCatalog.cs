@@ -33,7 +33,7 @@ internal static class FeatureCommandCatalog
         Visible(PluginCommandIds.XlineVertical, "快速启动原生 XL 的垂直构造线模式，并继续等待用户指定穿过点", C_toolsCommandIds.MainToolset.Main),
         Visible(PluginCommandIds.DrawOrderBack, "调用 CAD 原生 DRAWORDER，将所选对象后置到绘图次序底层", C_toolsCommandIds.MainToolset.Main),
         Visible(PluginCommandIds.DrawOrderFront, "调用 CAD 原生 DRAWORDER，将所选对象前置到绘图次序顶层", C_toolsCommandIds.MainToolset.Main),
-        Visible(PluginCommandIds.DrawOrderFrontAlt, "调用 CAD 原生 DRAWORDER，将所选对象前置到绘图次序顶层", C_toolsCommandIds.MainToolset.Main),
+        Visible(PluginCommandIds.HatchBoundary, "选择填充图案后，调用 CAD 原生 HATCHGENERATEBOUNDARY 生成边界线", C_toolsCommandIds.MainToolset.Main),
         VisibleRibbon(PluginCommandIds.QuickArrow, "快速箭头", "快速箭头：第一点指定箭尾、第二点指定箭头；取点时按 S 可设置箭尾显示文字", C_toolsCommandIds.MainToolset.Main),
         Visible(PluginCommandIds.QuickWall, "快速墙体：多点取墙体基线，移动鼠标预览墙体朝向，按 S 可设置线层、颜色和串联双层宽度，按 X 切换单层/双层，按 F 互换两项宽度", C_toolsCommandIds.MainToolset.Main),
         Visible(PluginCommandIds.WallFinish, "墙面完成面：选择一根或多根直线/开放多段线作为墙面线，断开的对象分别生成闭合图形与填充；填充样式优先取图层命令里拾取的填充，按 S 可设置偏移量、完成面图层和完成面颜色", C_toolsCommandIds.MainToolset.Main),

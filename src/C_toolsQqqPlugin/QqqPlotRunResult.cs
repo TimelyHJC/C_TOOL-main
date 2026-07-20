@@ -9,6 +9,7 @@ internal sealed class QqqPlotOptions
     public string StyleSheet { get; set; } = "";
     public string ScaleText { get; set; } = "布满图纸";
     public string FileNameTemplate { get; set; } = "";
+    public string TadLabelName { get; set; } = "";
     public bool AutoRotate { get; set; } = true;
     public bool CenterPlot { get; set; } = true;
     public double OffsetX { get; set; }

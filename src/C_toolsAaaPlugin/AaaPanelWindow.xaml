@@ -451,8 +451,8 @@
             <Button x:Name="BrowseFolderButton"
                     Grid.Column="0"
                     Style="{StaticResource ToolbarIconButton}"
-                    Click="BrowseFolder_Click"
-                    ToolTip="选择文件夹">
+                    Click="OpenCurrentFolder_Click"
+                    ToolTip="打开当前文件夹">
               <ContentControl Style="{StaticResource CadFolderIconControl}"
                               Width="18"
                               Height="18"
@@ -462,7 +462,9 @@
                      Grid.Column="2"
                      Style="{StaticResource CompactReadOnlyPathTextBox}"
                      VerticalAlignment="Center"
-                     ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                     Cursor="Hand"
+                     PreviewMouseLeftButtonDown="FolderPathTextBox_PreviewMouseLeftButtonDown"
+                     ToolTip="点击选择图库文件夹" />
            </Grid>
 
           <Grid Grid.Row="1"

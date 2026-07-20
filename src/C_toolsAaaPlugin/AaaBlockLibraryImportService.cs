@@ -82,12 +82,13 @@ internal static class AaaBlockLibraryImportService
     {
         Directory.CreateDirectory(targetFolder);
 
+        var uniqueBlocks = KeepFirstBlockPerDisplayName(blocks, out var duplicateBlockCount);
         var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var importedPaths = new List<string>();
         var failedCount = 0;
 
         using var documentLock = doc.LockDocument();
-        foreach (var block in blocks)
+        foreach (var block in uniqueBlocks)
         {
             try
             {
@@ -132,6 +133,8 @@ internal static class AaaBlockLibraryImportService
 
         var ignoredCount = Math.Max(0, selectedCount - blocks.Count);
         var messageText = $"导入成功，新增 {importedPaths.Count} 个图块。";
+        if (duplicateBlockCount > 0)
+            messageText += $" 忽略 {duplicateBlockCount} 个重复图块。";
         if (ignoredCount > 0)
             messageText += $" 跳过 {ignoredCount} 个。";
         if (failedCount > 0)
@@ -139,6 +142,32 @@ internal static class AaaBlockLibraryImportService
 
         doc.Editor.WriteMessage($"\nV_AAA：{messageText}");
         return AaaImportResult.Succeed(messageText, importedPaths.Count);
+    }
+
+    private static List<AaaBlockExportItem> KeepFirstBlockPerDisplayName(
+        IReadOnlyList<AaaBlockExportItem> blocks,
+        out int duplicateBlockCount)
+    {
+        var uniqueBlocks = new List<AaaBlockExportItem>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        duplicateBlockCount = 0;
+
+        foreach (var block in blocks)
+        {
+            var key = (block.DisplayName ?? "").Trim();
+            if (key.Length == 0)
+                key = block.BlockHandle;
+
+            if (!seenNames.Add(key))
+            {
+                duplicateBlockCount++;
+                continue;
+            }
+
+            uniqueBlocks.Add(block);
+        }
+
+        return uniqueBlocks;
     }
 }
 

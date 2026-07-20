@@ -9,7 +9,7 @@ internal static class AaaBlockComboPackageStore
     internal const string ManifestFileName = "manifest.json";
     internal const string MembersFolderName = "members";
     internal const string PreviewFileName = "preview.dwg";
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
 
     internal static bool IsComboPackageDirectory(string? path)
     {
@@ -74,6 +74,9 @@ internal static class AaaBlockComboPackageStore
 
             manifest.SchemaVersion = manifest.SchemaVersion <= 0 ? 1 : manifest.SchemaVersion;
             manifest.DisplayName = (manifest.DisplayName ?? "").Trim();
+            manifest.BasePointX = NormalizeCoordinate(manifest.BasePointX);
+            manifest.BasePointY = NormalizeCoordinate(manifest.BasePointY);
+            manifest.BasePointZ = NormalizeCoordinate(manifest.BasePointZ);
             manifest.PreviewRelativePath = NormalizeRelativePath(
                 manifest.PreviewRelativePath,
                 IsComboPackageDirectory(comboPath) ? PreviewFileName : "");
@@ -127,6 +130,9 @@ internal static class AaaBlockComboPackageStore
 
         manifest.SchemaVersion = CurrentSchemaVersion;
         manifest.DisplayName = (manifest.DisplayName ?? "").Trim();
+        manifest.BasePointX = NormalizeCoordinate(manifest.BasePointX);
+        manifest.BasePointY = NormalizeCoordinate(manifest.BasePointY);
+        manifest.BasePointZ = NormalizeCoordinate(manifest.BasePointZ);
         manifest.PreviewRelativePath = NormalizeRelativePath(manifest.PreviewRelativePath, "");
         manifest.Members ??= new List<AaaBlockComboMember>();
 
@@ -270,6 +276,9 @@ internal static class AaaBlockComboPackageStore
         return normalized.TrimEnd(Path.DirectorySeparatorChar);
     }
 
+    private static double NormalizeCoordinate(double value) =>
+        double.IsNaN(value) || double.IsInfinity(value) ? 0d : value;
+
     private static string BuildSafePath(string baseFolder, string relativePath, string fallbackPath)
     {
         var root = AppendDirectorySeparator(Path.GetFullPath(baseFolder));
@@ -302,9 +311,12 @@ internal static class AaaBlockComboPackageStore
 
 internal sealed class AaaBlockComboManifest
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
     public string DisplayName { get; set; } = "";
     public string CreatedUtc { get; set; } = "";
+    public double BasePointX { get; set; }
+    public double BasePointY { get; set; }
+    public double BasePointZ { get; set; }
     public string PreviewRelativePath { get; set; } = "";
     public List<AaaBlockComboMember> Members { get; set; } = new();
 }

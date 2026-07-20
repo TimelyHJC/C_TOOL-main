@@ -396,10 +396,10 @@ public class Commands
         DrawOrderCommandService.BringToFront(PluginCommandIds.DrawOrderFront);
     }
 
-    [CommandMethod(PluginCommandIds.CommandGroup, PluginCommandIds.DrawOrderFrontAlt, CommandFlags.Modal | CommandFlags.UsePickSet)]
-    public void BringSelectionDrawOrderToFrontAlt()
+    [CommandMethod(PluginCommandIds.CommandGroup, PluginCommandIds.HatchBoundary, CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void GenerateHatchBoundary()
     {
-        DrawOrderCommandService.BringToFront(PluginCommandIds.DrawOrderFrontAlt);
+        HatchBoundaryCommandService.Run();
     }
 
     [CommandMethod(PluginCommandIds.CommandGroup, PluginCommandIds.QuickArrow, CommandFlags.Modal)]

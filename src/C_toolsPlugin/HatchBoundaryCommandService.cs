@@ -100,6 +100,10 @@ internal static class HatchBoundaryCommandService
             if (selectedObject?.ObjectId.IsNull != false)
                 continue;
 
+            var objectClass = selectedObject.ObjectId.ObjectClass;
+            if (!string.Equals(objectClass?.DxfName, "HATCH", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             ids.Add(selectedObject.ObjectId);
         }
 

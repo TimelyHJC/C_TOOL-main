@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -21,7 +22,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
     private const string SelectFolderTooltip = "请先选择有效的图块文件夹。";
     private const string RefreshFolderTooltip = "重新读取当前图库目录。";
     private const string ImportBlocksTooltip = "当前显示独立图库。隐藏面板后可在当前图纸中点选或框选多个图块，并添加到当前图库目录。";
-    private const string ImportComboTooltip = "当前显示组合图库。隐藏面板后可在当前图纸中多选图块，输入组合名称并添加为组合定义。";
+    private const string ImportComboTooltip = "当前显示组合图库。隐藏面板后可在当前图纸中多选图块，输入组合名称与基点并添加为组合定义。";
     private const string UpdateBlocksTooltip = "当前显示独立图库。隐藏面板后可在当前图纸中选择新块，并按设备名称替换图库内时间戳不同的旧块。";
     private const string UpdateComboTooltip = "当前显示组合图库。隐藏面板后可在当前图纸中多选图块，输入组合名称与基点，并按设备名称替换图库内时间戳不同的旧组合定义。";
     private const string UpdateBlocksEmptyTooltip = "当前独立图库中没有可更新的图块。";
@@ -109,7 +110,18 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         ShowActivated = false;
     }
 
-    private void BrowseFolder_Click(object sender, RoutedEventArgs e)
+    private void OpenCurrentFolder_Click(object sender, RoutedEventArgs e)
+    {
+        OpenCurrentFolder();
+    }
+
+    private void FolderPathTextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        SelectFolder();
+    }
+
+    private void SelectFolder()
     {
         using var dialog = new FolderBrowserDialog
         {
@@ -130,6 +142,30 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         UpdateCommandButtonsState();
         SaveSettings();
         RefreshBlockList();
+    }
+
+    private void OpenCurrentFolder()
+    {
+        var folderPath = AaaFolderBlockStore.NormalizeFolderPath(_folderPath);
+        if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
+        {
+            SetStatus("当前图库文件夹不存在，点击路径可重新选择。");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = folderPath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 打开图库文件夹失败", ex);
+            SetStatus($"打开文件夹失败：{ex.Message}");
+        }
     }
 
     private void RefreshBlocks_Click(object sender, RoutedEventArgs e)

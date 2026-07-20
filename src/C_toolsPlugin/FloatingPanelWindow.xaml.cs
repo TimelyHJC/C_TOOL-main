@@ -543,7 +543,6 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
                 layerCount = entries.Count;
                 if (emit.Skipped.Count > 0)
                     warnings.AddRange(emit.Skipped.Select(x => $"LISP 未生成：{x}"));
-                CurrentLayerFloatingTabManager.RequestRefresh();
                 _hasPendingLayerRowDeletion = false;
                 TryLoadLayerLispAfterReset();
             }
@@ -1143,7 +1142,6 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
         try
         {
             LayerShortcutStore.Save(layerEntries);
-            CurrentLayerFloatingTabManager.RequestRefresh();
         }
         catch (Exception ex)
         {

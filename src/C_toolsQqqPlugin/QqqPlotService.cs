@@ -32,6 +32,13 @@ internal static class QqqPlotService
     internal const string FileNameTemplateLayout = "布局名";
     internal const string DefaultPageSetupName = "A3GOODME";
 
+    private static readonly string[] DrawingNameTadLabelKeywords =
+    {
+        "水路图",
+        "方案",
+        "施工图"
+    };
+
     private const string PaperAutoMatch = "自动匹配";
     private const string ScaleFit = "布满图纸";
     private const string CombinedLayoutFallbackName = "合并图纸";
@@ -1531,6 +1538,7 @@ internal static class QqqPlotService
             StyleSheet = options.StyleSheet,
             ScaleText = options.ScaleText,
             FileNameTemplate = "{index:000}_{layout}_{frame}",
+            TadLabelName = options.TadLabelName,
             AutoRotate = options.AutoRotate,
             CenterPlot = options.CenterPlot,
             OffsetX = options.OffsetX,
@@ -1561,7 +1569,7 @@ internal static class QqqPlotService
         var baseName = resolvedTemplate switch
         {
             "{layout}" => layoutName,
-            _ => drawingName
+            _ => ResolveDefaultDrawingOutputName(drawingName, options.TadLabelName)
         };
 
         baseName = SanitizeFileName(baseName);
@@ -1596,7 +1604,8 @@ internal static class QqqPlotService
 
         fileNameContext ??= CreateOutputFileNameContext(options);
         var ext = fileNameContext.Extension;
-        var baseName = fileNameContext.Renderer.Render(drawingName, frame, plotIndex, ext);
+        var defaultDrawingName = ResolveDefaultDrawingOutputName(drawingName, options.TadLabelName);
+        var baseName = fileNameContext.Renderer.Render(defaultDrawingName, frame, plotIndex, ext);
         if (string.IsNullOrWhiteSpace(baseName))
             baseName = $"{drawingName}_{SanitizeFileName(frame.LayoutName)}_{plotIndex:000}_{SanitizeFileName(frame.FrameName)}";
 
@@ -1646,6 +1655,25 @@ internal static class QqqPlotService
         }
 
         return "{drawing}";
+    }
+
+    private static string ResolveDefaultDrawingOutputName(string drawingName, string? tadLabelName)
+    {
+        var label = (tadLabelName ?? "").Trim();
+        if (drawingName.Length == 0 || label.Length == 0)
+            return drawingName;
+
+        var result = drawingName;
+        foreach (var keyword in DrawingNameTadLabelKeywords)
+        {
+            result = Regex.Replace(
+                result,
+                Regex.Escape(keyword),
+                label,
+                RegexOptions.IgnoreCase);
+        }
+
+        return result;
     }
 
     private static string ResolveCombinedLayoutName(IReadOnlyList<QqqPlotFrameInfo> frames)
@@ -2164,6 +2192,7 @@ internal static class QqqPlotService
             StyleSheet = options.StyleSheet,
             ScaleText = options.ScaleText,
             FileNameTemplate = options.FileNameTemplate,
+            TadLabelName = options.TadLabelName,
             AutoRotate = options.AutoRotate,
             CenterPlot = options.CenterPlot,
             OffsetX = options.OffsetX,

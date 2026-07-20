@@ -197,6 +197,9 @@ internal static class AaaBlockComboLibraryImportService
         {
             DisplayName = comboName,
             CreatedUtc = DateTime.UtcNow.ToString("O"),
+            BasePointX = comboBasePoint.X,
+            BasePointY = comboBasePoint.Y,
+            BasePointZ = comboBasePoint.Z,
             PreviewRelativePath = ""
         };
 

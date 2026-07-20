@@ -1076,7 +1076,7 @@
                     <ComboBox x:Name="FileNameTemplateCombo"
                               VerticalAlignment="Stretch"
                               IsEditable="False"
-                              Style="{StaticResource CadToolbarComboBox}" />
+                              Style="{StaticResource CadComboBox}" />
                   </Border>
                 </Grid>
               </Grid>

@@ -5,7 +5,7 @@ using AcadRuntimeException = Autodesk.AutoCAD.Runtime.Exception;
 namespace C_toolsPlugin;
 
 /// <summary>
-/// F_WB / F_SB / F_HB：通过 AutoCAD 原生 DRAWORDER 调整所选对象绘图次序。
+/// F_WB / F_SB：通过 AutoCAD 原生 DRAWORDER 调整所选对象绘图次序。
 /// </summary>
 internal static class DrawOrderCommandService
 {

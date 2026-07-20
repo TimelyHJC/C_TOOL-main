@@ -24,7 +24,6 @@ public class PluginApp : CadPluginAppBase
         CtoolRuntimeAssemblyResolver.EnsureInitialized();
         Volatile.Write(ref s_startupAliasFilesPrepared, 0);
         Volatile.Write(ref s_startupPgpReloadPending, 1);
-        CurrentLayerFloatingTabManager.Initialize();
         ColorShortcutService.Enable();
         AcAp.DocumentManager.DocumentCreated += OnDocumentCreated;
         AcAp.DocumentManager.DocumentActivated += OnDocumentActivated;
@@ -249,7 +248,6 @@ public class PluginApp : CadPluginAppBase
 
     protected override void OnTerminateCore()
     {
-        CurrentLayerFloatingTabManager.Terminate();
         AcAp.DocumentManager.DocumentCreated -= OnDocumentCreated;
         AcAp.DocumentManager.DocumentActivated -= OnDocumentActivated;
         Commands.CloseFloatingPanelIfAny();

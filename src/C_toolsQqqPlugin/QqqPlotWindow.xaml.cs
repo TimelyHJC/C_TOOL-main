@@ -2068,6 +2068,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             StyleSheet = options.StyleSheet,
             ScaleText = options.ScaleText,
             FileNameTemplate = "{drawing}_{layout}_{frame}_preview_{datetime:yyyyMMdd_HHmmss}",
+            TadLabelName = options.TadLabelName,
             PlotToFile = true,
             AutoRotate = options.AutoRotate,
             CenterPlot = options.CenterPlot,
@@ -2110,8 +2111,16 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
             UpsideDown = saved.UpsideDown,
             SortRule = string.IsNullOrWhiteSpace(saved.PrintOrderRule) ? PrintSaveService.PlotOrderAddedOrder : saved.PrintOrderRule.Trim(),
             OutputFolder = (OutputFolderCombo.SelectedItem as string ?? OutputFolderCombo.Text ?? "").Trim(),
-            FileNameTemplate = ResolveFileNameTemplateSelection()
+            FileNameTemplate = ResolveFileNameTemplateSelection(),
+            TadLabelName = ResolveSelectedTadLabelName()
         };
+    }
+
+    private string ResolveSelectedTadLabelName()
+    {
+        return SavedSheetSetTabs?.SelectedItem is SavedSheetSetTabInfo { IsWorkingSet: false } tab
+            ? (tab.DisplayName ?? "").Trim()
+            : "";
     }
 
     private static string BuildPlotResultHint(string primaryHint, IReadOnlyList<string> infoMessages)
