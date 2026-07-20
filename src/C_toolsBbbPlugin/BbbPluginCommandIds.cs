@@ -15,6 +15,8 @@ internal static class BbbPluginCommandIds
 
     /// <summary>刷新选中图块的增强属性显示，相当于对选中块执行属性同步。</summary>
     internal const string BlockAttributeRefresh = C_toolsCommandIds.Bbb.BlockAttributeRefresh;
+    /// <summary>同步块属性参照。</summary>
+    internal const string BlockAttributeSync = C_toolsCommandIds.Bbb.BlockAttributeSync;
 
     /// <summary>历史 F_BXR 命令号；已停用，仅保留字符串常量兼容。</summary>
     internal const string BlockAssignHiddenDeviceNames = C_toolsCommandIds.Bbb.BlockAssignHiddenDeviceNames;

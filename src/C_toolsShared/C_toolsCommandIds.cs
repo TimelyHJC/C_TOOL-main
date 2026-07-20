@@ -144,6 +144,8 @@ public static class C_toolsCommandIds
         public const string DeviceBlockCreate = "F_AB";
         /// <summary>刷新选中图块的增强属性显示</summary>
         public const string BlockAttributeRefresh = "F_BV";
+        /// <summary>同步块属性参照</summary>
+        public const string BlockAttributeSync = BlockAttributeRefresh;
         /// <summary>历史命令：块分配隐藏设备名（已停用）</summary>
         public const string BlockAssignHiddenDeviceNames = "F_BXR";
         /// <summary>历史命令：按映射汇总设备名并导出表格（已停用）</summary>

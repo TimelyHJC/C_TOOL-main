@@ -42,12 +42,12 @@ public class BbbCommands
             (doc, _) => BbbDeviceBlockCreateService.Run(doc));
     }
 
-    [CommandMethod(BbbPluginCommandIds.CommandGroup, BbbPluginCommandIds.BlockAttributeRefresh, CommandFlags.Modal | CommandFlags.UsePickSet)]
-    public void RefreshBlockAttributes()
+    [CommandMethod(BbbPluginCommandIds.CommandGroup, BbbPluginCommandIds.BlockAttributeSync, CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void SyncBlockAttributes()
     {
         CadCommandContext.ExecuteInActiveDocument(
-            "刷新图块增强属性",
-            (doc, _) => BbbBlockAttributeRefreshService.Run(doc));
+            "同步块属性",
+            (doc, _) => BbbBlockAttributeSyncService.Run(doc));
     }
 
     internal static void CloseBbbPanelIfAny()

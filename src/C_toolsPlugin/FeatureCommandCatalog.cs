@@ -52,7 +52,7 @@ internal static class FeatureCommandCatalog
         Visible(C_toolsCommandIds.Bbb.Main, "打开设备清单输出浮窗，可读取图块显示设备名称并写入 Excel 设备清单"),
         VisibleOther(C_toolsCommandIds.Bbb.TextToAttribute, "快速把选中的 DBText/MText 转成带“设备名称”属性的块参照", C_toolsCommandIds.Bbb.Main),
         VisibleOther(C_toolsCommandIds.Bbb.DeviceBlockCreate, "选择对象创建成设备块，弹窗以九宫格指定基点，块名可从 CAD 文字拾取", C_toolsCommandIds.Bbb.Main),
-        VisibleOther(C_toolsCommandIds.Bbb.BlockAttributeRefresh, "选择图块并同步块定义中的增强属性，让新增或调整后的属性文字立即显示", C_toolsCommandIds.Bbb.Main),
+        VisibleOther(C_toolsCommandIds.Bbb.BlockAttributeSync, "按 BATTMAN 同步逻辑刷新所选块定义的所有块参照属性，保留已有属性值", C_toolsCommandIds.Bbb.Main),
 
         Hidden(C_toolsCommandIds.Ddd.AliasShort),
         VisibleRibbon(C_toolsCommandIds.Ddd.Main, "打开 V_DDD", "打开文字标注浮窗，提供多重引线、智能标注与文字处理工具"),

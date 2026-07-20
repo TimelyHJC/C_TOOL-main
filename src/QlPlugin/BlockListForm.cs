@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace QlPlugin;
@@ -25,7 +26,7 @@ public class BlockListForm : Form
         _blocks = blocks;
         _fromSelection = fromSelection;
         _selectedBlockNames = fromSelection ? blocks.Select(b => b.Name).ToHashSet(StringComparer.OrdinalIgnoreCase) : null;
-        Text = fromSelection ? "图块列表 - 选中图块" : "图块列表 - 按大小排序";
+        Text = fromSelection ? "C_TOOL 图块列表 - 选中图块" : "C_TOOL 图块列表 - 按大小排序";
         Size = new Size(750, 550);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;
@@ -34,10 +35,11 @@ public class BlockListForm : Form
 
         _lblTitle = new Label
         {
-            Text = fromSelection ? $"共 {blocks.Count} 个选中图块" : $"共 {blocks.Count} 个图块（按大小排序）",
+            Text = GetHeaderSummaryText(blocks.Count),
             Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true,
-            TextAlign = ContentAlignment.MiddleLeft
+            Margin = new Padding(0)
         };
         QlCadTheme.ApplyLabel(_lblTitle, header: true);
 
@@ -45,7 +47,7 @@ public class BlockListForm : Form
         {
             Text = "删除选中图块",
             Size = new Size(128, 34),
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         };
         QlCadTheme.ApplyButton(_btnDelete);
         _btnDelete.Click += BtnDelete_Click;
@@ -60,7 +62,7 @@ public class BlockListForm : Form
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             MultiSelect = true,
             RowHeadersVisible = false,
-            AllowUserToResizeRows = false,
+            AllowUserToResizeRows = false
         };
         QlCadTheme.ApplyGrid(_grid);
 
@@ -110,27 +112,93 @@ public class BlockListForm : Form
         });
 
         _grid.CellDoubleClick += Grid_CellDoubleClick;
+        _grid.CellMouseEnter += (_, e) =>
+        {
+            if (e.RowIndex >= 0)
+                _grid.Rows[e.RowIndex].DefaultCellStyle.BackColor = QlCadTheme.GridRowHover;
+        };
+        _grid.CellMouseLeave += (_, e) =>
+        {
+            if (e.RowIndex >= 0)
+                _grid.Rows[e.RowIndex].DefaultCellStyle.BackColor = QlCadTheme.GridRow;
+        };
 
-        var toolbar = new Panel { Dock = DockStyle.Top, Height = 54 };
-        QlCadTheme.ApplyToolbar(toolbar);
-        toolbar.Controls.Add(_lblTitle);
-
-        var panel = new Panel { Dock = DockStyle.Bottom, Height = 54 };
-        QlCadTheme.ApplyStatusPanel(panel);
-        panel.Controls.Add(_btnDelete);
-        panel.Paint += (_, e) =>
+        var header = CreatePluginHeader();
+        var statusPanel = new Panel
+        {
+            Dock = DockStyle.Fill
+        };
+        QlCadTheme.ApplyStatusPanel(statusPanel);
+        statusPanel.Controls.Add(_btnDelete);
+        statusPanel.Paint += (_, e) =>
         {
             using var pen = new Pen(QlCadTheme.StatusLine);
-            e.Graphics.DrawLine(pen, 0, 0, panel.Width, 0);
+            e.Graphics.DrawLine(pen, 0, 0, statusPanel.Width, 0);
         };
-        panel.Resize += (_, _) => _btnDelete.Location = new Point(panel.Width - _btnDelete.Width - 14, 10);
-        _btnDelete.Location = new Point(panel.Width - _btnDelete.Width - 14, 10);
+        statusPanel.Resize += (_, _) => PositionDeleteButton(statusPanel);
+        PositionDeleteButton(statusPanel);
 
-        Controls.Add(_grid);
-        Controls.Add(panel);
-        Controls.Add(toolbar);
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = QlCadTheme.GridBg,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = new Padding(0),
+            Padding = new Padding(0)
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+        layout.Controls.Add(header, 0, 0);
+        layout.Controls.Add(_grid, 0, 1);
+        layout.Controls.Add(statusPanel, 0, 2);
+
+        Controls.Add(layout);
 
         RefreshGrid();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        CadWinFormsTitleBarHelper.TryApplyDarkTitleBar(this, QlCadTheme.Panel, QlCadTheme.Text);
+    }
+
+    private Control CreatePluginHeader()
+    {
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0)
+        };
+        QlCadTheme.ApplyToolbar(header);
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var pluginTitle = new Label
+        {
+            Text = "C_TOOL 图块列表",
+            AutoSize = true,
+            AutoEllipsis = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 0, 18, 0)
+        };
+        QlCadTheme.ApplyLabel(pluginTitle, header: true);
+
+        header.Controls.Add(pluginTitle, 0, 0);
+        header.Controls.Add(_lblTitle, 1, 0);
+        return header;
+    }
+
+    private void PositionDeleteButton(Panel panel)
+    {
+        var x = Math.Max(12, panel.ClientSize.Width - _btnDelete.Width - 14);
+        _btnDelete.Location = new Point(x, 11);
     }
 
     private void Grid_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
@@ -197,7 +265,7 @@ public class BlockListForm : Form
         _blocks = _fromSelection && _selectedBlockNames != null
             ? BlockInfoCollector.CollectBlocks().Where(b => _selectedBlockNames.Contains(b.Name)).ToList()
             : BlockInfoCollector.CollectBlocks();
-        _lblTitle.Text = _fromSelection ? $"共 {_blocks.Count} 个选中图块" : $"共 {_blocks.Count} 个图块（按大小排序）";
+        _lblTitle.Text = GetHeaderSummaryText(_blocks.Count);
 
         var displayItems = _blocks.Select((b, i) => new
         {
@@ -212,4 +280,50 @@ public class BlockListForm : Form
         _grid.DataSource = null;
         _grid.DataSource = displayItems;
     }
+
+    private string GetHeaderSummaryText(int count) =>
+        _fromSelection ? $"共 {count} 个选中图块" : $"共 {count} 个图块（按大小排序）";
+}
+
+internal static class CadWinFormsTitleBarHelper
+{
+    private const int DwAttributeUseImmersiveDarkMode = 20;
+    private const int DwAttributeUseImmersiveDarkModeLegacy = 19;
+    private const int DwAttributeBorderColor = 34;
+    private const int DwAttributeCaptionColor = 35;
+    private const int DwAttributeTextColor = 36;
+
+    internal static void TryApplyDarkTitleBar(Form form, Color background, Color text)
+    {
+        try
+        {
+            if (form.Handle == IntPtr.Zero)
+                return;
+
+            SetDwmIntAttribute(form.Handle, DwAttributeUseImmersiveDarkMode, 1);
+            SetDwmIntAttribute(form.Handle, DwAttributeUseImmersiveDarkModeLegacy, 1);
+            SetDwmIntAttribute(form.Handle, DwAttributeBorderColor, ToColorRef(background));
+            SetDwmIntAttribute(form.Handle, DwAttributeCaptionColor, ToColorRef(background));
+            SetDwmIntAttribute(form.Handle, DwAttributeTextColor, ToColorRef(text));
+        }
+        catch
+        {
+            // 标题栏着色是增强项；当前系统不支持时保持默认标题栏。
+        }
+    }
+
+    private static void SetDwmIntAttribute(IntPtr hwnd, int attribute, int value)
+    {
+        _ = DwmSetWindowAttribute(hwnd, attribute, ref value, Marshal.SizeOf(typeof(int)));
+    }
+
+    private static int ToColorRef(Color color) =>
+        color.R | (color.G << 8) | (color.B << 16);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(
+        IntPtr hwnd,
+        int dwAttribute,
+        ref int pvAttribute,
+        int cbAttribute);
 }

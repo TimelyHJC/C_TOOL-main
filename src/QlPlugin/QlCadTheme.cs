@@ -11,6 +11,7 @@ internal static class QlCadTheme
     internal static readonly Color GridHeaderBg = Color.FromArgb(27, 31, 40);
     internal static readonly Color GridRow = Color.FromArgb(18, 20, 26);
     internal static readonly Color GridRowAlt = Color.FromArgb(22, 25, 31);
+    internal static readonly Color GridRowHover = Color.FromArgb(34, 39, 49);
     internal static readonly Color GridLine = Color.FromArgb(37, 43, 54);
     internal static readonly Color InputBg = Color.FromArgb(38, 44, 56);
     internal static readonly Color ButtonBg = Color.FromArgb(45, 51, 59);
@@ -37,6 +38,13 @@ internal static class QlCadTheme
         panel.BackColor = ToolbarBg;
         panel.ForeColor = Text;
         panel.Padding = new Padding(14, 10, 14, 10);
+    }
+
+    internal static void ApplyToolbar(TableLayoutPanel panel)
+    {
+        panel.BackColor = ToolbarBg;
+        panel.ForeColor = Text;
+        panel.Padding = new Padding(14, 0, 14, 0);
     }
 
     internal static void ApplyStatusPanel(Panel panel)

@@ -54,10 +54,12 @@ internal static class LayerLispShortcuts
         sb.AppendLine("(vl-load-com)");
         sb.AppendLine();
         sb.AppendLine("; 先撤销上一版已生成命令，确保删除别名后立刻失效");
-        sb.AppendLine("; Protected CAD command names are never undefuned.");
+        sb.AppendLine("; Legacy generated layer tool names are also cleared, except the C_TOOL LAYFRZ fallback.");
         sb.AppendLine($"(setq _ctools_layer_protected_cmds {BuildProtectedAliasSymbolList()})");
+        sb.AppendLine($"(setq _ctools_layer_retired_native_cmds {BuildRetiredNativeLayerAliasSymbolList()})");
         sb.AppendLine($"(foreach _ctools_cmd (if (boundp '{GeneratedAliasSymbolsVar}) {GeneratedAliasSymbolsVar} '())");
-        sb.AppendLine("  (if (not (member _ctools_cmd _ctools_layer_protected_cmds))");
+        sb.AppendLine("  (if (or (not (member _ctools_cmd _ctools_layer_protected_cmds))");
+        sb.AppendLine("          (member _ctools_cmd _ctools_layer_retired_native_cmds))");
         sb.AppendLine("    (vl-catch-all-apply 'vl-acad-undefun (list _ctools_cmd))");
         sb.AppendLine("  )");
         sb.AppendLine(")");
@@ -122,6 +124,16 @@ internal static class LayerLispShortcuts
     {
         var aliases = LayerAliasRules.ProtectedCadCommandNames;
         if (aliases.Count == 0)
+            return "'()";
+        return $"'({string.Join(" ", aliases.Select(static a => $"c:{a}"))})";
+    }
+
+    private static string BuildRetiredNativeLayerAliasSymbolList()
+    {
+        var aliases = CadNativeLayerCommandRepair.LayerCommandNames
+            .Where(static a => !string.Equals(a, "LAYFRZ", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (aliases.Length == 0)
             return "'()";
         return $"'({string.Join(" ", aliases.Select(static a => $"c:{a}"))})";
     }

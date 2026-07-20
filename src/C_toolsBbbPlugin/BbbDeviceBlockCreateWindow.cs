@@ -10,7 +10,11 @@ internal sealed class BbbDeviceBlockCreateWindow : Window
     private const string PlacementKey = "C_TOOL_BbbDeviceBlockCreateWindow";
     private readonly TextBox _blockNameBox;
     private readonly TextBlock _statusText;
+    private readonly Dictionary<BbbDeviceBlockNameMode, Button> _modeButtons = new();
     private readonly Dictionary<BbbDeviceBlockAnchor, Button> _anchorButtons = new();
+    private Button? _okButton;
+    private UIElement? _anchorSection;
+    private BbbDeviceBlockNameMode _selectedMode;
     private BbbDeviceBlockAnchor _selectedAnchor;
 
     internal BbbDeviceBlockCreateWindow(BbbDeviceBlockCreateSettings settings)
@@ -28,6 +32,7 @@ internal sealed class BbbDeviceBlockCreateWindow : Window
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
         FontSize = 12;
 
+        _selectedMode = settings.NameMode;
         _selectedAnchor = settings.Anchor;
         _blockNameBox = CreateTextBox(settings.BlockName);
         _statusText = new TextBlock
@@ -41,6 +46,7 @@ internal sealed class BbbDeviceBlockCreateWindow : Window
         Loaded += OnLoaded;
         Closed += OnClosed;
         Content = BuildContent();
+        SelectMode(_selectedMode);
         SelectAnchor(_selectedAnchor);
     }
 
@@ -75,23 +81,53 @@ internal sealed class BbbDeviceBlockCreateWindow : Window
             Close();
         };
 
-        var okButton = CreateActionButton("创建", isPrimary: true);
-        okButton.Click += (_, _) => ConfirmAndClose();
+        _okButton = CreateActionButton("创建", isPrimary: true);
+        _okButton.Click += (_, _) => ConfirmAndClose();
 
         buttons.Children.Add(cancelButton);
-        buttons.Children.Add(okButton);
+        buttons.Children.Add(_okButton);
 
         var panel = new StackPanel();
         panel.Children.Add(CreateLabel("设备块名称"));
         panel.Children.Add(CreateBlockNameRow());
         panel.Children.Add(CreateSpacer(14));
-        panel.Children.Add(CreateLabel("基点位置"));
-        panel.Children.Add(CreateAnchorGrid());
+        panel.Children.Add(CreateLabel("名称条件"));
+        panel.Children.Add(CreateModeGrid());
+        panel.Children.Add(CreateSpacer(14));
+        _anchorSection = CreateAnchorSection();
+        panel.Children.Add(_anchorSection);
         panel.Children.Add(_statusText);
 
         root.Children.Add(buttons);
         root.Children.Add(panel);
         return root;
+    }
+
+    private UIElement CreateModeGrid()
+    {
+        var grid = new Grid
+        {
+            Margin = new Thickness(0, 6, 0, 0)
+        };
+        for (var i = 0; i < 3; i++)
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        AddModeButton(grid, BbbDeviceBlockNameMode.CreateNewBlock, "创建设备块", 0);
+        AddModeButton(grid, BbbDeviceBlockNameMode.RenameSingleBlock, "改单块名称", 1);
+        AddModeButton(grid, BbbDeviceBlockNameMode.RenameAllBlocks, "改全块名称", 2);
+        return grid;
+    }
+
+    private void AddModeButton(Grid grid, BbbDeviceBlockNameMode mode, string text, int column)
+    {
+        var button = CreateSecondaryButton(text);
+        button.Margin = new Thickness(0, 0, column == 2 ? 0 : 8, 0);
+        button.MinWidth = 0;
+        button.Click += (_, _) => SelectMode(mode);
+
+        _modeButtons[mode] = button;
+        Grid.SetColumn(button, column);
+        grid.Children.Add(button);
     }
 
     private UIElement CreateBlockNameRow()
@@ -116,6 +152,14 @@ internal sealed class BbbDeviceBlockCreateWindow : Window
         Grid.SetColumn(pickButton, 1);
         grid.Children.Add(pickButton);
         return grid;
+    }
+
+    private UIElement CreateAnchorSection()
+    {
+        var panel = new StackPanel();
+        panel.Children.Add(CreateLabel("基点位置"));
+        panel.Children.Add(CreateAnchorGrid());
+        return panel;
     }
 
     private UIElement CreateAnchorGrid()
@@ -176,6 +220,24 @@ internal sealed class BbbDeviceBlockCreateWindow : Window
         }
     }
 
+    private void SelectMode(BbbDeviceBlockNameMode mode)
+    {
+        _selectedMode = mode;
+        foreach (var pair in _modeButtons)
+        {
+            var selected = pair.Key == mode;
+            pair.Value.Background = selected ? Brush("#2D6CDF") : Brush("#2E3640");
+            pair.Value.BorderBrush = selected ? Brush("#76A9FF") : Brush("#56616C");
+            pair.Value.Foreground = selected ? Brushes.White : Brush("#E6E8EA");
+        }
+
+        if (_anchorSection != null)
+            _anchorSection.Visibility = mode == BbbDeviceBlockNameMode.CreateNewBlock ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_okButton != null)
+            _okButton.Content = mode == BbbDeviceBlockNameMode.CreateNewBlock ? "创建" : "修改";
+    }
+
     private void ConfirmAndClose()
     {
         if (!SaveCurrentSettings(allowEmptyName: false))
@@ -199,7 +261,8 @@ internal sealed class BbbDeviceBlockCreateWindow : Window
         SavedSettings = new BbbDeviceBlockCreateSettings
         {
             BlockName = allowEmptyName ? nameText.Trim() : nameText,
-            Anchor = _selectedAnchor
+            Anchor = _selectedAnchor,
+            NameMode = _selectedMode
         };
         return true;
     }

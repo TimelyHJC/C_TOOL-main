@@ -47,7 +47,11 @@ public class LayerLispShortcutsTests
         StringAssert.Contains(script, "(defun c:LAYFRZ ()");
         StringAssert.Contains(script, "._F_LAYFRZ");
         Assert.IsFalse(script.IndexOf("(set _ctools_cmd nil)", StringComparison.Ordinal) >= 0);
-        StringAssert.Contains(script, "(if (not (member _ctools_cmd _ctools_layer_protected_cmds))");
+        StringAssert.Contains(script, "(member _ctools_cmd _ctools_layer_retired_native_cmds)");
+        var retiredNativeLine = script.Split([Environment.NewLine], StringSplitOptions.None)
+            .Single(line => line.StartsWith("(setq _ctools_layer_retired_native_cmds", StringComparison.Ordinal));
+        StringAssert.Contains(retiredNativeLine, "c:LAYMRG");
+        Assert.IsFalse(retiredNativeLine.IndexOf("c:LAYFRZ", StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
     [TestMethod]

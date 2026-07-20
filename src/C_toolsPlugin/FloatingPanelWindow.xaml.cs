@@ -543,7 +543,7 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
                 layerCount = entries.Count;
                 if (emit.Skipped.Count > 0)
                     warnings.AddRange(emit.Skipped.Select(x => $"LISP 未生成：{x}"));
-                CurrentLayerRibbonManager.RequestRefresh();
+                CurrentLayerFloatingTabManager.RequestRefresh();
                 _hasPendingLayerRowDeletion = false;
                 TryLoadLayerLispAfterReset();
             }
@@ -1143,7 +1143,7 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
         try
         {
             LayerShortcutStore.Save(layerEntries);
-            CurrentLayerRibbonManager.RequestRefresh();
+            CurrentLayerFloatingTabManager.RequestRefresh();
         }
         catch (Exception ex)
         {
@@ -1285,7 +1285,11 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
             e.Handled = true;
     }
 
-    private void DeleteLayerRows_ContextClick(object sender, RoutedEventArgs e) => TryDeleteSelectedLayerShortcutRows();
+    private void DeleteLayerRows_ContextClick(object sender, RoutedEventArgs e)
+    {
+        if (TryDeleteSelectedLayerShortcutRows())
+            e.Handled = true;
+    }
 
     private static bool IsTextBoxAncestor(DependencyObject? d)
     {

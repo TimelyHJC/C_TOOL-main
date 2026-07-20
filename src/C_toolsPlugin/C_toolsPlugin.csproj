@@ -12,10 +12,6 @@
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.IO.Compression" />
-    <Reference Include="AdWindows">
-      <HintPath>$(Acad2024InstallPath)\AdWindows.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="AcCoreMgd">
       <HintPath>$(Acad2024InstallPath)\AcCoreMgd.dll</HintPath>
       <Private>false</Private>

@@ -7,6 +7,7 @@ public class ColorShortcutInputStateTests
 {
     private const int KeyA = 0x41;
     private const int KeyB = 0x42;
+    private const int Key0 = 0x30;
     private const int Key1 = 0x31;
     private const int Key2 = 0x32;
 
@@ -40,6 +41,47 @@ public class ColorShortcutInputStateTests
         Assert.IsTrue(space.Handled);
         Assert.AreEqual("12", space.ColorTextToApply);
         Assert.AreEqual(0, state.BufferLength);
+    }
+
+    [TestMethod]
+    public void ProcessVirtualKey_ZeroThenReturn_SubmitsLayerZeroShortcut()
+    {
+        var state = new ColorShortcutInputState();
+
+        var digit = state.ProcessVirtualKey(Key0);
+        var enter = state.ProcessVirtualKey(ColorShortcutService.VirtualKeys.Return);
+
+        Assert.IsTrue(digit.Handled);
+        Assert.IsTrue(enter.Handled);
+        Assert.AreEqual("0", enter.ColorTextToApply);
+        Assert.AreEqual(0, state.BufferLength);
+    }
+
+    [TestMethod]
+    public void ResolveColorShortcutTarget_ZeroTargetsLayerZero()
+    {
+        var target = ColorShortcutService.ResolveColorShortcutTarget("0");
+
+        Assert.AreEqual(ColorShortcutService.ColorShortcutTargetKind.LayerZero, target.Kind);
+        Assert.AreEqual(0, target.ColorIndex);
+    }
+
+    [TestMethod]
+    public void ResolveColorShortcutTarget_ValidAciTargetsColor()
+    {
+        var target = ColorShortcutService.ResolveColorShortcutTarget("255");
+
+        Assert.AreEqual(ColorShortcutService.ColorShortcutTargetKind.AciColor, target.Kind);
+        Assert.AreEqual(255, target.ColorIndex);
+    }
+
+    [TestMethod]
+    public void ResolveColorShortcutTarget_OutOfRangeIsInvalid()
+    {
+        var target = ColorShortcutService.ResolveColorShortcutTarget("256");
+
+        Assert.AreEqual(ColorShortcutService.ColorShortcutTargetKind.Invalid, target.Kind);
+        Assert.AreEqual(0, target.ColorIndex);
     }
 
     [TestMethod]
@@ -115,5 +157,53 @@ public class ColorShortcutInputStateTests
         Assert.IsFalse(enter.Handled);
         Assert.IsNull(enter.ColorTextToApply);
         Assert.AreEqual(0, state.BufferLength);
+    }
+
+    [TestMethod]
+    public void CanHandleColorShortcutInput_SelectedObjectInCadDocument_AllowsColorShortcut()
+    {
+        Assert.IsTrue(ColorShortcutService.CanHandleColorShortcutInput(
+            isPluginWpfKeyboardMessage: false,
+            isTextEditingFocused: false,
+            isNativeTextInputKeyboardMessage: false,
+            isCadCommandActive: false,
+            hasImpliedSelection: true,
+            isCadDocumentKeyboardMessage: true));
+    }
+
+    [TestMethod]
+    public void CanHandleColorShortcutInput_SelectedObjectButUiFocus_PassesThroughNumberInput()
+    {
+        Assert.IsFalse(ColorShortcutService.CanHandleColorShortcutInput(
+            isPluginWpfKeyboardMessage: false,
+            isTextEditingFocused: false,
+            isNativeTextInputKeyboardMessage: false,
+            isCadCommandActive: false,
+            hasImpliedSelection: true,
+            isCadDocumentKeyboardMessage: false));
+    }
+
+    [TestMethod]
+    public void CanHandleColorShortcutInput_SelectedObjectButTextInputFocus_PassesThroughNumberInput()
+    {
+        Assert.IsFalse(ColorShortcutService.CanHandleColorShortcutInput(
+            isPluginWpfKeyboardMessage: false,
+            isTextEditingFocused: false,
+            isNativeTextInputKeyboardMessage: true,
+            isCadCommandActive: false,
+            hasImpliedSelection: true,
+            isCadDocumentKeyboardMessage: true));
+    }
+
+    [TestMethod]
+    public void CanHandleColorShortcutInput_NoSelectedObject_PassesThroughNumberInput()
+    {
+        Assert.IsFalse(ColorShortcutService.CanHandleColorShortcutInput(
+            isPluginWpfKeyboardMessage: false,
+            isTextEditingFocused: false,
+            isNativeTextInputKeyboardMessage: false,
+            isCadCommandActive: false,
+            hasImpliedSelection: false,
+            isCadDocumentKeyboardMessage: true));
     }
 }

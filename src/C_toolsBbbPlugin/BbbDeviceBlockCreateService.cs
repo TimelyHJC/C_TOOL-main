@@ -22,10 +22,18 @@ internal enum BbbDeviceBlockAnchor
     BottomRight
 }
 
+internal enum BbbDeviceBlockNameMode
+{
+    CreateNewBlock,
+    RenameSingleBlock,
+    RenameAllBlocks
+}
+
 internal sealed class BbbDeviceBlockCreateSettings
 {
     internal string BlockName { get; set; } = "";
     internal BbbDeviceBlockAnchor Anchor { get; set; } = BbbDeviceBlockAnchor.Center;
+    internal BbbDeviceBlockNameMode NameMode { get; set; } = BbbDeviceBlockNameMode.CreateNewBlock;
 }
 
 internal sealed class BbbDeviceBlockCreateResult
@@ -35,13 +43,8 @@ internal sealed class BbbDeviceBlockCreateResult
     internal int ClonedEntityCount { get; set; }
     internal bool ReplacedExisting { get; set; }
     internal bool RenamedBlock { get; set; }
-    internal int AffectedReferenceCount { get; set; }
-}
-
-internal sealed class BbbSelectedDeviceBlockInfo
-{
-    internal ObjectId BlockDefinitionId { get; set; } = ObjectId.Null;
-    internal string CurrentName { get; set; } = "";
+    internal int AffectedBlockReferenceCount { get; set; }
+    internal BbbDeviceBlockNameMode NameMode { get; set; } = BbbDeviceBlockNameMode.CreateNewBlock;
 }
 
 internal static class BbbDeviceBlockCreateService
@@ -91,38 +94,16 @@ internal static class BbbDeviceBlockCreateService
                     throw new InvalidOperationException(error);
 
                 settings.BlockName = normalizedName;
-                var selectedBlockInfo = ResolveSelectedDeviceBlockInfo(doc.Database, selectedIds);
-                var existingBlockId = FindBlockDefinitionId(doc.Database, normalizedName);
-                var replaceExisting = false;
-                if (!existingBlockId.IsNull &&
-                    (selectedBlockInfo == null || existingBlockId != selectedBlockInfo.BlockDefinitionId))
-                {
-                    var confirm = MessageBox.Show(
-                        $"当前图纸已存在名为“{normalizedName}”的设备块。\n\n是否删除原先图块并替换？\n选择“否”可返回修改名称。",
-                        "发现同名设备块",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Warning,
-                        MessageBoxResult.No);
-                    if (confirm != MessageBoxResult.Yes)
-                        continue;
+                if (!TryConfirmReplaceExistingBlock(doc.Database, selectedIds, settings, out var replaceExisting))
+                    continue;
 
-                    replaceExisting = true;
-                }
-
-                var result = selectedBlockInfo == null
-                    ? CreateDeviceBlock(doc, selectedIds, settings, replaceExisting)
-                    : RenameDeviceBlock(doc, selectedBlockInfo, normalizedName, replaceExisting);
-                if (result.RenamedBlock)
-                {
-                    var actionText = result.ReplacedExisting ? "已替换并修改设备块名称" : "已修改设备块名称";
-                    editor.WriteMessage($"\n{CommandName}：{actionText}为“{result.BlockName}”，影响 {result.AffectedReferenceCount} 个引用。");
-                }
-                else
-                {
-                    var actionText = result.ReplacedExisting ? "已替换设备块" : "已创建设备块";
-                    editor.WriteMessage($"\n{CommandName}：{actionText}“{result.BlockName}”，包含 {result.ClonedEntityCount} 个对象。");
-                }
-
+                var result = ExecuteDeviceBlockNameCommand(
+                    doc,
+                    selectedIds,
+                    settings,
+                    editor.CurrentUserCoordinateSystem,
+                    replaceExisting);
+                editor.WriteMessage(BuildResultMessage(result));
                 return;
             }
         }
@@ -312,6 +293,34 @@ internal static class BbbDeviceBlockCreateService
             : "";
     }
 
+    private static bool TryConfirmReplaceExistingBlock(
+        Database database,
+        IReadOnlyList<ObjectId> selectedIds,
+        BbbDeviceBlockCreateSettings settings,
+        out bool replaceExisting)
+    {
+        replaceExisting = false;
+        var existingBlockId = FindBlockDefinitionId(database, settings.BlockName);
+        if (existingBlockId.IsNull)
+            return true;
+
+        var currentDefinitionId = ResolveCurrentDefinitionIdForMode(database, selectedIds, settings.NameMode);
+        if (!currentDefinitionId.IsNull && existingBlockId == currentDefinitionId)
+            return true;
+
+        var confirm = MessageBox.Show(
+            $"当前图纸已存在名为“{settings.BlockName}”的设备块。\n\n是否删除原先图块并替换？\n选择“否”可返回修改名称。",
+            "发现同名设备块",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirm != MessageBoxResult.Yes)
+            return false;
+
+        replaceExisting = true;
+        return true;
+    }
+
     private static ObjectId FindBlockDefinitionId(Database database, string blockName)
     {
         if (string.IsNullOrWhiteSpace(blockName))
@@ -326,130 +335,45 @@ internal static class BbbDeviceBlockCreateService
             });
     }
 
-    private static BbbSelectedDeviceBlockInfo? ResolveSelectedDeviceBlockInfo(
+    private static ObjectId ResolveCurrentDefinitionIdForMode(
         Database database,
-        IReadOnlyList<ObjectId> selectedIds)
+        IReadOnlyList<ObjectId> selectedIds,
+        BbbDeviceBlockNameMode mode)
     {
+        if (mode == BbbDeviceBlockNameMode.CreateNewBlock)
+            return ObjectId.Null;
+
         return CadDatabaseScope.Read(
             database,
             (_, transaction) =>
             {
-                var distinctIds = selectedIds.Distinct().ToList();
-                BbbSelectedDeviceBlockInfo? blockInfo = null;
-                var blockReferenceCount = 0;
-                var nonBlockEntityCount = 0;
-
-                foreach (var objectId in distinctIds)
-                {
-                    if (objectId.IsInvalid())
-                        continue;
-
-                    if (!CadDatabaseScope.TryOpenAs<Entity>(transaction, objectId, OpenMode.ForRead, out var entity) ||
-                        entity == null)
-                    {
-                        continue;
-                    }
-
-                    if (entity is not BlockReference blockReference)
-                    {
-                        nonBlockEntityCount++;
-                        continue;
-                    }
-
-                    blockReferenceCount++;
-                    var blockDefinitionId = ResolveRenameBlockDefinitionId(blockReference, transaction);
-                    if (blockDefinitionId.IsNull)
-                        throw new InvalidOperationException("所选图块无法直接修改名称。");
-
-                    var blockName = TryGetBlockName(blockDefinitionId, transaction);
-                    if (blockName.Length == 0 || blockName.StartsWith("*", StringComparison.Ordinal))
-                        throw new InvalidOperationException("匿名块无法直接修改名称。");
-
-                    blockInfo = new BbbSelectedDeviceBlockInfo
-                    {
-                        BlockDefinitionId = blockDefinitionId,
-                        CurrentName = blockName
-                    };
-                }
-
-                if (blockReferenceCount == 0)
-                    return null;
-
-                if (blockReferenceCount != 1 || nonBlockEntityCount > 0)
-                    throw new InvalidOperationException("修改设备块名称时，请只选择一个已有图块。");
-
-                return blockInfo;
+                var blockReference = OpenSingleBlockReference(transaction, selectedIds, OpenMode.ForRead);
+                return mode == BbbDeviceBlockNameMode.RenameAllBlocks
+                    ? ResolveUserVisibleDefinitionId(blockReference)
+                    : blockReference.BlockTableRecord;
             });
     }
 
-    private static ObjectId ResolveRenameBlockDefinitionId(BlockReference blockReference, Transaction transaction)
-    {
-        try
-        {
-            if (blockReference.IsDynamicBlock && !blockReference.DynamicBlockTableRecord.IsNull)
-            {
-                var dynamicName = TryGetBlockName(blockReference.DynamicBlockTableRecord, transaction);
-                if (!string.IsNullOrWhiteSpace(dynamicName) && !dynamicName.StartsWith("*", StringComparison.Ordinal))
-                    return blockReference.DynamicBlockTableRecord;
-            }
-        }
-        catch
-        {
-        }
-
-        return blockReference.BlockTableRecord;
-    }
-
-    private static BbbDeviceBlockCreateResult RenameDeviceBlock(
+    private static BbbDeviceBlockCreateResult ExecuteDeviceBlockNameCommand(
         Document doc,
-        BbbSelectedDeviceBlockInfo selectedBlockInfo,
-        string newName,
+        IReadOnlyList<ObjectId> selectedIds,
+        BbbDeviceBlockCreateSettings settings,
+        Matrix3d ucsToWorld,
         bool replaceExisting)
     {
-        return CadDatabaseScope.Write(
-            doc,
-            (database, transaction) =>
-            {
-                var blockTable = CadDatabaseScope.OpenAs<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
-                var sourceDefinition = CadDatabaseScope.OpenAs<BlockTableRecord>(
-                    transaction,
-                    selectedBlockInfo.BlockDefinitionId,
-                    OpenMode.ForWrite);
-                ValidateRenamableBlockDefinition(sourceDefinition, "所选图块");
-
-                var targetBlockId = blockTable.Has(newName) ? blockTable[newName] : ObjectId.Null;
-                var replacedExisting = false;
-                if (!targetBlockId.IsNull && targetBlockId != selectedBlockInfo.BlockDefinitionId)
-                {
-                    if (!replaceExisting)
-                        throw new InvalidOperationException($"当前图纸已存在名为“{newName}”的设备块。");
-
-                    var targetDefinition = CadDatabaseScope.OpenAs<BlockTableRecord>(transaction, targetBlockId, OpenMode.ForWrite);
-                    ValidateRenamableBlockDefinition(targetDefinition, "同名图块");
-                    targetDefinition.Name = CreateTemporaryBlockName(blockTable, newName);
-                    DeleteBlockDefinitionAndReferences(targetDefinition, transaction);
-                    replacedExisting = true;
-                }
-
-                if (!string.Equals(sourceDefinition.Name, newName, StringComparison.OrdinalIgnoreCase))
-                    sourceDefinition.Name = newName;
-
-                return new BbbDeviceBlockCreateResult
-                {
-                    BlockName = newName,
-                    SourceEntityCount = 1,
-                    RenamedBlock = true,
-                    ReplacedExisting = replacedExisting,
-                    AffectedReferenceCount = CountBlockReferences(sourceDefinition)
-                };
-            },
-            requireDocumentLock: true);
+        return settings.NameMode switch
+        {
+            BbbDeviceBlockNameMode.RenameSingleBlock => RenameSelectedBlock(doc, selectedIds, settings, replaceExisting),
+            BbbDeviceBlockNameMode.RenameAllBlocks => RenameAllBlockReferences(doc, selectedIds, settings, replaceExisting),
+            _ => CreateDeviceBlock(doc, selectedIds, settings, ucsToWorld, replaceExisting)
+        };
     }
 
     private static BbbDeviceBlockCreateResult CreateDeviceBlock(
         Document doc,
         IReadOnlyList<ObjectId> selectedIds,
         BbbDeviceBlockCreateSettings settings,
+        Matrix3d ucsToWorld,
         bool replaceExisting)
     {
         if (!TryNormalizeBlockNameInput(settings.BlockName, out var normalizedName, out var error))
@@ -467,21 +391,22 @@ internal static class BbbDeviceBlockCreateService
                 if (lockedLayerCount > 0)
                     throw new InvalidOperationException($"所选对象包含 {lockedLayerCount} 个锁定图层对象，请解锁后再执行。");
 
-                if (!TryGetCombinedExtents(entities, out var extents))
+                var worldToUcs = ucsToWorld.Inverse();
+                if (!TryGetCombinedExtents(entities, worldToUcs, out var extents))
                     throw new InvalidOperationException("未能读取所选对象范围，无法计算基点。");
 
-                var basePoint = ResolveAnchorPoint(extents, settings.Anchor);
+                var basePoint = ResolveAnchorPoint(extents, settings.Anchor).TransformBy(ucsToWorld);
                 var blockTable = CadDatabaseScope.OpenAs<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
-                var blockName = normalizedName;
-                var existingBlockId = blockTable.Has(blockName) ? blockTable[blockName] : ObjectId.Null;
+                var existingBlockId = blockTable.Has(normalizedName) ? blockTable[normalizedName] : ObjectId.Null;
+                var replacedExisting = !existingBlockId.IsNull;
                 var blockId = existingBlockId.IsNull
-                    ? CreateBlockDefinition(blockTable, transaction, blockName)
+                    ? CreateBlockDefinition(blockTable, transaction, normalizedName)
                     : existingBlockId;
                 var blockDefinition = CadDatabaseScope.OpenAs<BlockTableRecord>(transaction, blockId, OpenMode.ForWrite);
-                if (!existingBlockId.IsNull)
+                if (replacedExisting)
                 {
                     if (!replaceExisting)
-                        throw new InvalidOperationException($"当前图纸已存在名为“{blockName}”的设备块。");
+                        throw new InvalidOperationException($"当前图纸已存在名为“{normalizedName}”的设备块。");
 
                     ClearBlockDefinitionContents(blockDefinition, transaction);
                 }
@@ -497,10 +422,115 @@ internal static class BbbDeviceBlockCreateService
 
                 return new BbbDeviceBlockCreateResult
                 {
-                    BlockName = blockName,
+                    BlockName = normalizedName,
                     SourceEntityCount = entities.Count,
                     ClonedEntityCount = clonedCount,
-                    ReplacedExisting = !existingBlockId.IsNull
+                    ReplacedExisting = replacedExisting,
+                    AffectedBlockReferenceCount = replacedExisting ? Math.Max(1, CountBlockReferences(blockDefinition)) : 1,
+                    NameMode = BbbDeviceBlockNameMode.CreateNewBlock
+                };
+            },
+            requireDocumentLock: true);
+    }
+
+    private static BbbDeviceBlockCreateResult RenameSelectedBlock(
+        Document doc,
+        IReadOnlyList<ObjectId> selectedIds,
+        BbbDeviceBlockCreateSettings settings,
+        bool replaceExisting)
+    {
+        if (!TryNormalizeBlockNameInput(settings.BlockName, out var normalizedName, out var error))
+            throw new InvalidOperationException(error);
+
+        return CadDatabaseScope.Write(
+            doc,
+            (database, transaction) =>
+            {
+                var blockReference = OpenSingleBlockReferenceForWrite(transaction, selectedIds);
+                if (blockReference.IsDynamicBlock)
+                    throw new InvalidOperationException("改单块名称暂不支持动态块，请使用“改全块名称”。");
+
+                var blockTable = CadDatabaseScope.OpenAs<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
+                var sourceDefinition = CadDatabaseScope.OpenAs<BlockTableRecord>(
+                    transaction,
+                    blockReference.BlockTableRecord,
+                    OpenMode.ForWrite);
+                ValidateRenamableBlockDefinition(sourceDefinition, "改单块名称");
+
+                var replacedExisting = DeleteConflictingBlockDefinitionIfNeeded(
+                    blockTable,
+                    transaction,
+                    normalizedName,
+                    sourceDefinition.ObjectId,
+                    replaceExisting);
+
+                var referenceCount = CountBlockReferences(sourceDefinition);
+                var currentName = (sourceDefinition.Name ?? "").Trim();
+                if (string.Equals(currentName, normalizedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Name is already correct; keep the selected reference as-is.
+                }
+                else if (referenceCount <= 1)
+                {
+                    sourceDefinition.Name = normalizedName;
+                }
+                else
+                {
+                    var clonedBlockId = CloneBlockDefinition(blockTable, transaction, sourceDefinition, normalizedName);
+                    blockReference.BlockTableRecord = clonedBlockId;
+                    blockReference.RecordGraphicsModified(true);
+                }
+
+                return new BbbDeviceBlockCreateResult
+                {
+                    BlockName = normalizedName,
+                    ReplacedExisting = replacedExisting,
+                    RenamedBlock = true,
+                    AffectedBlockReferenceCount = 1,
+                    NameMode = BbbDeviceBlockNameMode.RenameSingleBlock
+                };
+            },
+            requireDocumentLock: true);
+    }
+
+    private static BbbDeviceBlockCreateResult RenameAllBlockReferences(
+        Document doc,
+        IReadOnlyList<ObjectId> selectedIds,
+        BbbDeviceBlockCreateSettings settings,
+        bool replaceExisting)
+    {
+        if (!TryNormalizeBlockNameInput(settings.BlockName, out var normalizedName, out var error))
+            throw new InvalidOperationException(error);
+
+        return CadDatabaseScope.Write(
+            doc,
+            (database, transaction) =>
+            {
+                var blockReference = OpenSingleBlockReferenceForRead(transaction, selectedIds);
+                var blockTable = CadDatabaseScope.OpenAs<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
+                var definitionId = ResolveUserVisibleDefinitionId(blockReference);
+                var blockDefinition = CadDatabaseScope.OpenAs<BlockTableRecord>(transaction, definitionId, OpenMode.ForWrite);
+                ValidateRenamableBlockDefinition(blockDefinition, "改全块名称");
+
+                var replacedExisting = DeleteConflictingBlockDefinitionIfNeeded(
+                    blockTable,
+                    transaction,
+                    normalizedName,
+                    blockDefinition.ObjectId,
+                    replaceExisting);
+
+                var referenceCount = CountBlockReferences(blockDefinition);
+                var currentName = (blockDefinition.Name ?? "").Trim();
+                if (!string.Equals(currentName, normalizedName, StringComparison.OrdinalIgnoreCase))
+                    blockDefinition.Name = normalizedName;
+
+                return new BbbDeviceBlockCreateResult
+                {
+                    BlockName = normalizedName,
+                    ReplacedExisting = replacedExisting,
+                    RenamedBlock = true,
+                    AffectedBlockReferenceCount = Math.Max(1, referenceCount),
+                    NameMode = BbbDeviceBlockNameMode.RenameAllBlocks
                 };
             },
             requireDocumentLock: true);
@@ -540,6 +570,43 @@ internal static class BbbDeviceBlockCreateService
         return blockId;
     }
 
+    private static ObjectId CloneBlockDefinition(
+        BlockTable blockTable,
+        Transaction transaction,
+        BlockTableRecord sourceDefinition,
+        string blockName)
+    {
+        if (!blockTable.IsWriteEnabled)
+            blockTable.UpgradeOpen();
+
+        using var newDefinition = new BlockTableRecord
+        {
+            Name = blockName,
+            Origin = sourceDefinition.Origin
+        };
+
+        var newBlockId = blockTable.Add(newDefinition);
+        transaction.AddNewlyCreatedDBObject(newDefinition, true);
+
+        foreach (ObjectId entityId in sourceDefinition)
+        {
+            if (entityId.IsInvalid())
+                continue;
+
+            if (!CadDatabaseScope.TryOpenAs<Entity>(transaction, entityId, OpenMode.ForRead, out var entity) ||
+                entity == null ||
+                entity.Clone() is not Entity clone)
+            {
+                continue;
+            }
+
+            newDefinition.AppendEntity(clone);
+            transaction.AddNewlyCreatedDBObject(clone, true);
+        }
+
+        return newBlockId;
+    }
+
     private static void ClearBlockDefinitionContents(BlockTableRecord blockDefinition, Transaction transaction)
     {
         ValidateRenamableBlockDefinition(blockDefinition, "同名图块");
@@ -559,11 +626,35 @@ internal static class BbbDeviceBlockCreateService
         }
     }
 
+    private static bool DeleteConflictingBlockDefinitionIfNeeded(
+        BlockTable blockTable,
+        Transaction transaction,
+        string blockName,
+        ObjectId currentBlockId,
+        bool replaceExisting)
+    {
+        if (!blockTable.Has(blockName))
+            return false;
+
+        var existingBlockId = blockTable[blockName];
+        if (!currentBlockId.IsNull && existingBlockId == currentBlockId)
+            return false;
+
+        if (!replaceExisting)
+            throw new InvalidOperationException($"图纸中已存在名为“{blockName}”的块，请换一个名称。");
+
+        var targetDefinition = CadDatabaseScope.OpenAs<BlockTableRecord>(transaction, existingBlockId, OpenMode.ForWrite);
+        ValidateRenamableBlockDefinition(targetDefinition, "同名图块");
+        targetDefinition.Name = CreateTemporaryBlockName(blockTable, blockName);
+        DeleteBlockDefinitionAndReferences(targetDefinition, transaction);
+        return true;
+    }
+
     private static void DeleteBlockDefinitionAndReferences(BlockTableRecord blockDefinition, Transaction transaction)
     {
         ValidateRenamableBlockDefinition(blockDefinition, "同名图块");
 
-        var referenceIds = blockDefinition.GetBlockReferenceIds(false, true).Cast<ObjectId>().ToList();
+        var referenceIds = blockDefinition.GetBlockReferenceIds(directOnly: false, forceValidity: true).Cast<ObjectId>().ToList();
         foreach (var referenceId in referenceIds)
         {
             if (referenceId.IsInvalid())
@@ -588,7 +679,7 @@ internal static class BbbDeviceBlockCreateService
         if (blockDefinition.IsFromExternalReference || blockDefinition.IsFromOverlayReference)
             throw new InvalidOperationException($"{label}来自外部参照，无法替换。");
 
-        if ((blockDefinition.Name ?? "").StartsWith("*", StringComparison.Ordinal))
+        if (blockDefinition.IsAnonymous || (blockDefinition.Name ?? "").StartsWith("*", StringComparison.Ordinal))
             throw new InvalidOperationException($"{label}是匿名块，无法直接修改名称。");
     }
 
@@ -596,9 +687,13 @@ internal static class BbbDeviceBlockCreateService
     {
         try
         {
-            return blockDefinition.GetBlockReferenceIds(false, true).Count;
+            return blockDefinition.GetBlockReferenceIds(directOnly: false, forceValidity: true).Count;
         }
-        catch
+        catch (Autodesk.AutoCAD.Runtime.Exception)
+        {
+            return 0;
+        }
+        catch (InvalidOperationException)
         {
             return 0;
         }
@@ -653,7 +748,10 @@ internal static class BbbDeviceBlockCreateService
         transaction.AddNewlyCreatedDBObject(blockReference, true);
     }
 
-    private static bool TryGetCombinedExtents(IReadOnlyList<Entity> entities, out Extents3d extents)
+    private static bool TryGetCombinedExtents(
+        IReadOnlyList<Entity> entities,
+        Matrix3d worldToUcs,
+        out Extents3d extents)
     {
         extents = default;
         var hasExtents = false;
@@ -662,7 +760,7 @@ internal static class BbbDeviceBlockCreateService
         {
             try
             {
-                var entityExtents = entity.GeometricExtents;
+                var entityExtents = TransformExtents(entity.GeometricExtents, worldToUcs);
                 if (!hasExtents)
                 {
                     extents = entityExtents;
@@ -681,6 +779,39 @@ internal static class BbbDeviceBlockCreateService
         }
 
         return hasExtents;
+    }
+
+    internal static Point3d ResolveAnchorPointForExtents(
+        Extents3d worldExtents,
+        BbbDeviceBlockAnchor anchor,
+        Matrix3d ucsToWorld)
+    {
+        var ucsExtents = TransformExtents(worldExtents, ucsToWorld.Inverse());
+        return ResolveAnchorPoint(ucsExtents, anchor).TransformBy(ucsToWorld);
+    }
+
+    internal static Extents3d TransformExtents(Extents3d source, Matrix3d transform)
+    {
+        var min = source.MinPoint;
+        var max = source.MaxPoint;
+        var points = new[]
+        {
+            new Point3d(min.X, min.Y, min.Z),
+            new Point3d(min.X, min.Y, max.Z),
+            new Point3d(min.X, max.Y, min.Z),
+            new Point3d(min.X, max.Y, max.Z),
+            new Point3d(max.X, min.Y, min.Z),
+            new Point3d(max.X, min.Y, max.Z),
+            new Point3d(max.X, max.Y, min.Z),
+            new Point3d(max.X, max.Y, max.Z)
+        };
+
+        var first = points[0].TransformBy(transform);
+        var transformed = new Extents3d(first, first);
+        for (var i = 1; i < points.Length; i++)
+            transformed.AddPoint(points[i].TransformBy(transform));
+
+        return transformed;
     }
 
     private static Point3d ResolveAnchorPoint(Extents3d extents, BbbDeviceBlockAnchor anchor)
@@ -705,6 +836,64 @@ internal static class BbbDeviceBlockCreateService
         };
 
         return new Point3d(x, y, min.Z);
+    }
+
+    private static BlockReference OpenSingleBlockReferenceForRead(Transaction transaction, IReadOnlyList<ObjectId> selectedIds)
+    {
+        return OpenSingleBlockReference(transaction, selectedIds, OpenMode.ForRead);
+    }
+
+    private static BlockReference OpenSingleBlockReferenceForWrite(Transaction transaction, IReadOnlyList<ObjectId> selectedIds)
+    {
+        return OpenSingleBlockReference(transaction, selectedIds, OpenMode.ForWrite);
+    }
+
+    private static BlockReference OpenSingleBlockReference(
+        Transaction transaction,
+        IReadOnlyList<ObjectId> selectedIds,
+        OpenMode openMode)
+    {
+        var objectIds = selectedIds
+            .Where(x => !x.IsInvalid())
+            .Distinct()
+            .ToList();
+        if (objectIds.Count != 1)
+            throw new InvalidOperationException("修改块名称时请只选择一个块参照。");
+
+        if (!CadDatabaseScope.TryOpenAs<BlockReference>(transaction, objectIds[0], openMode, out var blockReference) ||
+            blockReference == null)
+        {
+            throw new InvalidOperationException("修改块名称时请选择一个块参照。");
+        }
+
+        return blockReference;
+    }
+
+    private static ObjectId ResolveUserVisibleDefinitionId(BlockReference blockReference)
+    {
+        if (blockReference.IsDynamicBlock && !blockReference.DynamicBlockTableRecord.IsInvalid())
+            return blockReference.DynamicBlockTableRecord;
+
+        return blockReference.BlockTableRecord;
+    }
+
+    private static string BuildResultMessage(BbbDeviceBlockCreateResult result)
+    {
+        return result.NameMode switch
+        {
+            BbbDeviceBlockNameMode.RenameSingleBlock =>
+                result.ReplacedExisting
+                    ? $"\n{CommandName}：已替换同名块，并将选中单块名称改为“{result.BlockName}”。"
+                    : $"\n{CommandName}：已将选中单块名称改为“{result.BlockName}”。",
+            BbbDeviceBlockNameMode.RenameAllBlocks =>
+                result.ReplacedExisting
+                    ? $"\n{CommandName}：已替换同名块，并将全块名称改为“{result.BlockName}”，影响 {result.AffectedBlockReferenceCount} 个块参照。"
+                    : $"\n{CommandName}：已将全块名称改为“{result.BlockName}”，影响 {result.AffectedBlockReferenceCount} 个块参照。",
+            _ =>
+                result.ReplacedExisting
+                    ? $"\n{CommandName}：已替换设备块“{result.BlockName}”，包含 {result.ClonedEntityCount} 个对象。"
+                    : $"\n{CommandName}：已创建设备块“{result.BlockName}”，包含 {result.ClonedEntityCount} 个对象。"
+        };
     }
 
     private static string NormalizeBlockName(string? blockName)

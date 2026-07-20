@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,10 +19,21 @@ internal static partial class ColorShortcutService
 {
     private const int WmKeyDown = 0x0100;
     private const int WmSysKeyDown = 0x0104;
+    private const int MaxWindowClassNameLength = 256;
     private static readonly ColorShortcutInputState s_inputState = new();
     private static bool s_isEnabled;
     private static bool s_isRegistered;
     private static bool s_isApplying;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsChild(IntPtr hWndParent, IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetParent(IntPtr hWnd);
 
     internal static void Enable() => SetEnabled(true);
 
@@ -72,16 +84,7 @@ internal static partial class ColorShortcutService
         if (msg.message != WmKeyDown && msg.message != WmSysKeyDown)
             return;
 
-        if (IsPluginWpfKeyboardMessage(msg.hwnd) || IsTextEditingFocused())
-        {
-            s_inputState.Clear();
-            return;
-        }
-
-        if (IsCadCommandActive())
-            return;
-
-        if (!HasImpliedSelection())
+        if (!CanHandleColorShortcutMessage(msg.hwnd))
         {
             s_inputState.Clear();
             return;
@@ -98,6 +101,71 @@ internal static partial class ColorShortcutService
 
     internal static bool HasCommandModifier(ModifierKeys modifiers) =>
         (modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != ModifierKeys.None;
+
+    internal static bool CanHandleColorShortcutInput(
+        bool isPluginWpfKeyboardMessage,
+        bool isTextEditingFocused,
+        bool isNativeTextInputKeyboardMessage,
+        bool isCadCommandActive,
+        bool hasImpliedSelection,
+        bool isCadDocumentKeyboardMessage) =>
+        !isPluginWpfKeyboardMessage &&
+        !isTextEditingFocused &&
+        !isNativeTextInputKeyboardMessage &&
+        !isCadCommandActive &&
+        hasImpliedSelection &&
+        isCadDocumentKeyboardMessage;
+
+    private static bool CanHandleColorShortcutMessage(IntPtr hwnd)
+    {
+        var isPluginWpfKeyboardMessage = IsPluginWpfKeyboardMessage(hwnd);
+        var isTextEditingFocused = IsTextEditingFocused();
+        var isNativeTextInputKeyboardMessage = IsNativeTextInputKeyboardMessage(hwnd);
+        if (isPluginWpfKeyboardMessage || isTextEditingFocused || isNativeTextInputKeyboardMessage)
+        {
+            return CanHandleColorShortcutInput(
+                isPluginWpfKeyboardMessage,
+                isTextEditingFocused,
+                isNativeTextInputKeyboardMessage,
+                isCadCommandActive: false,
+                hasImpliedSelection: false,
+                isCadDocumentKeyboardMessage: false);
+        }
+
+        var isCadCommandActive = IsCadCommandActive();
+        if (isCadCommandActive)
+        {
+            return CanHandleColorShortcutInput(
+                isPluginWpfKeyboardMessage,
+                isTextEditingFocused,
+                isNativeTextInputKeyboardMessage,
+                isCadCommandActive,
+                hasImpliedSelection: false,
+                isCadDocumentKeyboardMessage: false);
+        }
+
+        var isCadDocumentKeyboardMessage = IsCadDocumentKeyboardMessage(hwnd);
+        if (!isCadDocumentKeyboardMessage)
+        {
+            return CanHandleColorShortcutInput(
+                isPluginWpfKeyboardMessage,
+                isTextEditingFocused,
+                isNativeTextInputKeyboardMessage,
+                isCadCommandActive,
+                hasImpliedSelection: false,
+                isCadDocumentKeyboardMessage);
+        }
+
+        var hasImpliedSelection = HasImpliedSelection();
+
+        return CanHandleColorShortcutInput(
+            isPluginWpfKeyboardMessage,
+            isTextEditingFocused,
+            isNativeTextInputKeyboardMessage,
+            isCadCommandActive,
+            hasImpliedSelection,
+            isCadDocumentKeyboardMessage);
+    }
 }
 
 internal readonly struct ColorShortcutKeyOutcome
@@ -215,6 +283,26 @@ internal sealed class ColorShortcutInputState
 
 internal static partial class ColorShortcutService
 {
+    internal enum ColorShortcutTargetKind
+    {
+        Invalid,
+        AciColor,
+        LayerZero
+    }
+
+    internal readonly struct ColorShortcutTarget
+    {
+        internal ColorShortcutTarget(ColorShortcutTargetKind kind, int colorIndex)
+        {
+            Kind = kind;
+            ColorIndex = colorIndex;
+        }
+
+        internal ColorShortcutTargetKind Kind { get; }
+
+        internal int ColorIndex { get; }
+    }
+
     internal static class VirtualKeys
     {
         internal const int Back = 0x08;
@@ -225,9 +313,8 @@ internal static partial class ColorShortcutService
 
     private static void ApplyColorShortcut(string colorText)
     {
-        if (!int.TryParse(colorText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var colorIndex) ||
-            colorIndex < 1 ||
-            colorIndex > 255)
+        var target = ResolveColorShortcutTarget(colorText);
+        if (target.Kind == ColorShortcutTargetKind.Invalid)
         {
             TryWriteMessage($"颜色快捷只支持 1-255 的 ACI 颜色编号：{colorText}。");
             return;
@@ -241,7 +328,10 @@ internal static partial class ColorShortcutService
                 {
                     try
                     {
-                        ApplyColorToImpliedSelection(colorIndex);
+                        if (target.Kind == ColorShortcutTargetKind.LayerZero)
+                            ApplyLayerZeroToImpliedSelection();
+                        else
+                            ApplyColorToImpliedSelection(target.ColorIndex);
                     }
                     finally
                     {
@@ -258,7 +348,43 @@ internal static partial class ColorShortcutService
         }
     }
 
+    internal static ColorShortcutTarget ResolveColorShortcutTarget(string colorText)
+    {
+        if (!int.TryParse(colorText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var colorIndex))
+            return new ColorShortcutTarget(ColorShortcutTargetKind.Invalid, 0);
+
+        if (colorIndex == 0)
+            return new ColorShortcutTarget(ColorShortcutTargetKind.LayerZero, 0);
+
+        if (colorIndex is >= 1 and <= 255)
+            return new ColorShortcutTarget(ColorShortcutTargetKind.AciColor, colorIndex);
+
+        return new ColorShortcutTarget(ColorShortcutTargetKind.Invalid, 0);
+    }
+
+    private static void ApplyLayerZeroToImpliedSelection()
+    {
+        ApplySelectionShortcut(
+            commandLabel: "图层快捷",
+            noSelectionMessage: "请先选中对象，再输入 0 并回车。",
+            changedMessageFactory: changedCount => $"已将 {changedCount} 个对象改到0图层",
+            mutateEntity: entity => entity.Layer = "0");
+    }
+
     private static void ApplyColorToImpliedSelection(int colorIndex)
+    {
+        ApplySelectionShortcut(
+            commandLabel: "颜色快捷",
+            noSelectionMessage: "请先选中对象，再输入 1-255 并回车。",
+            changedMessageFactory: changedCount => $"已将 {changedCount} 个对象颜色改为{colorIndex}",
+            mutateEntity: entity => entity.Color = Autodesk.AutoCAD.Colors.Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex));
+    }
+
+    private static void ApplySelectionShortcut(
+        string commandLabel,
+        string noSelectionMessage,
+        Func<int, string> changedMessageFactory,
+        Action<Entity> mutateEntity)
     {
         var doc = AcAp.DocumentManager.MdiActiveDocument;
         if (doc == null)
@@ -271,7 +397,7 @@ internal static partial class ColorShortcutService
         var implied = ed.SelectImplied();
         if (implied.Status != PromptStatus.OK || implied.Value == null || implied.Value.Count == 0)
         {
-            ed.WriteMessage("\nC_TOOL：颜色快捷：请先选中对象，再输入 1-255 并回车或空格。");
+            ed.WriteMessage($"\nC_TOOL：{commandLabel}：{noSelectionMessage}");
             return;
         }
 
@@ -310,23 +436,23 @@ internal static partial class ColorShortcutService
                         if (!entity.IsWriteEnabled)
                             entity.UpgradeOpen();
 
-                        entity.Color = Autodesk.AutoCAD.Colors.Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex);
+                        mutateEntity(entity);
                         changedCount++;
                     }
                     catch (InvalidOperationException ex)
                     {
                         failedCount++;
-                        C_toolsDiagnostics.LogNonFatal("颜色快捷修改对象失败（无效操作）", ex);
+                        C_toolsDiagnostics.LogNonFatal($"{commandLabel}修改对象失败（无效操作）", ex);
                     }
                     catch (Autodesk.AutoCAD.Runtime.Exception ex)
                     {
                         failedCount++;
-                        C_toolsDiagnostics.LogNonFatal("颜色快捷修改对象失败（CAD）", ex);
+                        C_toolsDiagnostics.LogNonFatal($"{commandLabel}修改对象失败（CAD）", ex);
                     }
                     catch (ArgumentException ex)
                     {
                         failedCount++;
-                        C_toolsDiagnostics.LogNonFatal("颜色快捷修改对象失败（参数）", ex);
+                        C_toolsDiagnostics.LogNonFatal($"{commandLabel}修改对象失败（参数）", ex);
                     }
                 }
 
@@ -335,7 +461,7 @@ internal static partial class ColorShortcutService
 
             var parts = new List<string>();
             if (changedCount > 0)
-                parts.Add($"已将 {changedCount} 个对象颜色改为{colorIndex}");
+                parts.Add(changedMessageFactory(changedCount));
             if (lockedLayerCount > 0)
                 parts.Add($"跳过 {lockedLayerCount} 个锁定图层对象");
             if (skippedCount > 0)
@@ -344,18 +470,18 @@ internal static partial class ColorShortcutService
                 parts.Add($"跳过 {failedCount} 个不可写对象");
 
             ed.WriteMessage(parts.Count == 0
-                ? "\nC_TOOL：颜色快捷：没有可修改的对象。"
-                : "\nC_TOOL：颜色快捷：" + string.Join("，", parts) + "。");
+                ? $"\nC_TOOL：{commandLabel}：没有可修改的对象。"
+                : $"\nC_TOOL：{commandLabel}：" + string.Join("，", parts) + "。");
         }
         catch (InvalidOperationException ex)
         {
-            C_toolsDiagnostics.LogNonFatal("颜色快捷执行失败（无效操作）", ex);
-            ed.WriteMessage("\nC_TOOL：颜色快捷失败：" + ex.Message);
+            C_toolsDiagnostics.LogNonFatal($"{commandLabel}执行失败（无效操作）", ex);
+            ed.WriteMessage($"\nC_TOOL：{commandLabel}失败：" + ex.Message);
         }
         catch (Autodesk.AutoCAD.Runtime.Exception ex)
         {
-            C_toolsDiagnostics.LogNonFatal("颜色快捷执行失败（CAD）", ex);
-            ed.WriteMessage("\nC_TOOL：颜色快捷失败：" + ex.Message);
+            C_toolsDiagnostics.LogNonFatal($"{commandLabel}执行失败（CAD）", ex);
+            ed.WriteMessage($"\nC_TOOL：{commandLabel}失败：" + ex.Message);
         }
     }
 
@@ -388,6 +514,74 @@ internal static partial class ColorShortcutService
         {
             return false;
         }
+    }
+
+    private static bool IsCadDocumentKeyboardMessage(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            var doc = AcAp.DocumentManager.MdiActiveDocument;
+            var window = doc?.Window;
+            if (window == null)
+                return false;
+
+            return IsSameOrChildWindow(window.Handle, hwnd) ||
+                   IsSameOrChildWindow(window.UnmanagedWindow, hwnd);
+        }
+        catch (Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("颜色快捷判断图纸窗口焦点失败", ex);
+            return false;
+        }
+    }
+
+    private static bool IsSameOrChildWindow(IntPtr parent, IntPtr hwnd) =>
+        parent != IntPtr.Zero &&
+        (parent == hwnd || IsChild(parent, hwnd));
+
+    private static bool IsNativeTextInputKeyboardMessage(IntPtr hwnd)
+    {
+        var current = hwnd;
+        for (var depth = 0; depth < 8 && current != IntPtr.Zero; depth++)
+        {
+            var className = GetWindowClassName(current);
+            if (IsNativeTextInputClassName(className))
+                return true;
+
+            current = GetParent(current);
+        }
+
+        return false;
+    }
+
+    private static string GetWindowClassName(IntPtr hwnd)
+    {
+        try
+        {
+            var buffer = new StringBuilder(MaxWindowClassNameLength);
+            var length = GetClassName(hwnd, buffer, buffer.Capacity);
+            return length <= 0 ? "" : buffer.ToString();
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static bool IsNativeTextInputClassName(string className)
+    {
+        if (string.IsNullOrWhiteSpace(className))
+            return false;
+
+        return className.Equals("Edit", StringComparison.OrdinalIgnoreCase) ||
+               className.Equals("ComboBox", StringComparison.OrdinalIgnoreCase) ||
+               className.Equals("ComboBoxEx32", StringComparison.OrdinalIgnoreCase) ||
+               className.StartsWith("RichEdit", StringComparison.OrdinalIgnoreCase) ||
+               className.StartsWith("WindowsForms10.EDIT", StringComparison.OrdinalIgnoreCase) ||
+               className.StartsWith("WindowsForms10.COMBOBOX", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsTextEditingFocused()
