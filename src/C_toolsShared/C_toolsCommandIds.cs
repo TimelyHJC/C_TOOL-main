@@ -189,6 +189,8 @@ public static class C_toolsCommandIds
         public const string TextHistoryEdit = "F_ED";
         /// <summary>文字转多行文字</summary>
         public const string TextToMText = "F_TTM";
+        /// <summary>文字转多行文字兼容命令（常见误输）。</summary>
+        public const string TextToMTextCompat = "F_TMM";
         /// <summary>选择文字后插入多重引线</summary>
         public const string TextToLeader = "F_DDC";
         /// <summary>匹配文字内容</summary>

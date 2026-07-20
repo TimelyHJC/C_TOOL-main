@@ -48,6 +48,8 @@ internal static class DddPluginCommandIds
 
     /// <summary>DD 插件：启动 AutoCAD 原生 TXT2MTXT，把单行文字转换为多行文字。</summary>
     internal const string TextToMText = C_toolsCommandIds.Ddd.TextToMText;
+    /// <summary>DD 插件：文字转多行文字兼容命令（常见误输）。</summary>
+    internal const string TextToMTextCompat = C_toolsCommandIds.Ddd.TextToMTextCompat;
 
     /// <summary>DD 插件：选择单行/多行文字后，按当前 DDD 引线格式插入多重引线。</summary>
     internal const string TextToLeader = C_toolsCommandIds.Ddd.TextToLeader;

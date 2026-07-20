@@ -15,6 +15,7 @@ namespace C_toolsDddPlugin;
 internal static class DddTextToMTextService
 {
     private const string NativeTextToMTextCommand = "_.TXT2MTXT ";
+    private const string NativeTextToMTextCommandName = "_.TXT2MTXT";
 
     internal static void Run(Document doc)
     {
@@ -25,10 +26,10 @@ internal static class DddTextToMTextService
         else if (hadPreselection)
             editor.SetImpliedSelection(Array.Empty<ObjectId>());
 
-        if (TryQueueNativeCommand(doc, out var error))
+        if (TryStartNativeCommand(doc, preselectedTextIds, out var error))
         {
             editor.WriteMessage(preselectedTextIds.Length > 0
-                ? $"\nC_TOOL：F_TTM 启动，已带入 {preselectedTextIds.Length} 个预选文字。"
+                ? $"\nC_TOOL：F_TTM 启动，已提交 {preselectedTextIds.Length} 个预选文字。"
                 : "\nC_TOOL：F_TTM 启动，选单行文字。");
             return;
         }
@@ -71,9 +72,11 @@ internal static class DddTextToMTextService
         return ids.Count == 0 ? Array.Empty<ObjectId>() : ids.ToArray();
     }
 
-    private static bool TryQueueNativeCommand(Document doc, out string error)
+    private static bool TryStartNativeCommand(Document doc, ObjectId[] preselectedTextIds, out string error)
     {
         error = string.Empty;
+        if (preselectedTextIds.Length > 0 && TryRunNativeCommandWithSelection(doc, preselectedTextIds))
+            return true;
 
         try
         {
@@ -150,6 +153,31 @@ internal static class DddTextToMTextService
         {
             C_toolsDiagnostics.LogNonFatal("F_TTM 使用 AcadDocument.SendCommand 启动 TXT2MTXT 失败（参数）", ex);
             error = $"执行原生 TXT2MTXT 失败：{ex.Message}";
+            return false;
+        }
+    }
+
+    private static bool TryRunNativeCommandWithSelection(Document doc, ObjectId[] preselectedTextIds)
+    {
+        try
+        {
+            var selectionSet = SelectionSet.FromObjectIds(preselectedTextIds);
+            doc.Editor.Command(NativeTextToMTextCommandName, selectionSet, "");
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("F_TTM 直接带预选文字执行 TXT2MTXT 失败（无效操作），尝试回退排队执行", ex);
+            return false;
+        }
+        catch (AcadRuntimeException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("F_TTM 直接带预选文字执行 TXT2MTXT 失败（CAD），尝试回退排队执行", ex);
+            return false;
+        }
+        catch (ArgumentException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("F_TTM 直接带预选文字执行 TXT2MTXT 失败（参数），尝试回退排队执行", ex);
             return false;
         }
     }

@@ -144,6 +144,7 @@ public class DddCommands
     }
 
     [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.TextToMText, CommandFlags.Modal | CommandFlags.UsePickSet)]
+    [CommandMethod(DddPluginCommandIds.CommandGroup, DddPluginCommandIds.TextToMTextCompat, CommandFlags.Modal | CommandFlags.UsePickSet)]
     public void F_TtmTextToMText()
     {
         var doc = AcAp.DocumentManager.MdiActiveDocument;
