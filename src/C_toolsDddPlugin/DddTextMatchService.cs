@@ -96,18 +96,11 @@ internal static class DddTextMatchService
     {
         targetIds = Array.Empty<ObjectId>();
 
-        var options = new PromptSelectionOptions
-        {
-            AllowDuplicates = false,
-            MessageForAdding = $"\nC_TOOL：{CommandName} 选择要匹配内容的目标文字：",
-            MessageForRemoval = $"\nC_TOOL：{CommandName} 移除目标文字："
-        };
-
-        var result = doc.Editor.GetSelection(options);
-        if (result.Status != PromptStatus.OK || result.Value == null)
+        var result = doc.Editor.GetNestedEntity(new PromptNestedEntityOptions($"\nC_TOOL：{CommandName} 点选要匹配内容的目标文字："));
+        if (result.Status != PromptStatus.OK || result.ObjectId.IsNull)
             return false;
 
-        targetIds = ExcludeSourceId(GetSupportedTargetIds(doc, result.Value.GetObjectIds()), sourceId);
+        targetIds = ExcludeSourceId(GetSupportedTargetIds(doc, new[] { result.ObjectId }), sourceId);
         if (targetIds.Length == 0)
             doc.Editor.WriteMessage($"\nC_TOOL：{CommandName} 未选择可匹配的目标文字。");
 

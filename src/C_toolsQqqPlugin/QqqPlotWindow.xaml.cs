@@ -2327,9 +2327,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
 
     private void EnsureShown()
     {
-        if (Visibility != Visibility.Visible)
-            Show();
-
+        ModelessWindowDisplayHelper.RestoreAndShow(this);
         ShowActivated = false;
     }
 

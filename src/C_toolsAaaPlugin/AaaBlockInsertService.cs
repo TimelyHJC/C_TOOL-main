@@ -70,7 +70,7 @@ internal static class AaaBlockInsertService
                     currentSpace.AppendEntity(blockReference);
                     transaction.AddNewlyCreatedDBObject(blockReference, true);
                     ApplyDynamicPropertySnapshots(blockReference, insertionPlan.DynamicPropertySnapshots);
-                    AppendAttributeReferences(blockReference, transaction, insertionPlan.AttributeSnapshots);
+                    AppendAttributeReferences(blockReference, database, transaction, insertionPlan.AttributeSnapshots);
                 });
 
             var message = $"已插入图块：{item.DisplayName}";
@@ -103,7 +103,12 @@ internal static class AaaBlockInsertService
         using var sourceDatabase = new Database(false, true);
         sourceDatabase.ReadDwgFile(sourcePath, FileOpenMode.OpenForReadAndAllShare, true, "");
 
-        var sourceInsertion = TryReadSingleBlockInsertion(sourceDatabase, targetDatabase);
+        var sourceInsertion = TryReadSingleBlockInsertion(
+            sourceDatabase,
+            targetDatabase,
+            displayName,
+            sourcePath,
+            lastWriteTimeUtc);
         if (sourceInsertion == null)
         {
             var wrappedBlockId = InsertWholeDrawingAsDefinition(sourceDatabase, targetDatabase, displayName, sourcePath, lastWriteTimeUtc);
@@ -143,15 +148,15 @@ internal static class AaaBlockInsertService
 
             using var documentLock = doc.LockDocument();
             var db = doc.Database;
-            var definitionIds = new Dictionary<string, ObjectId>(StringComparer.OrdinalIgnoreCase);
+            var insertionPlans = new Dictionary<string, SingleBlockInsertionPlan>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var resolvedMember in resolvedMembers)
             {
                 var cacheKey = resolvedMember.SourcePath + "|" + resolvedMember.LastWriteTimeUtc.Ticks.ToString();
-                if (definitionIds.ContainsKey(cacheKey))
+                if (insertionPlans.ContainsKey(cacheKey))
                     continue;
 
-                definitionIds[cacheKey] = EnsureBlockDefinition(
+                insertionPlans[cacheKey] = BuildInsertionPlan(
                     db,
                     resolvedMember.DisplayName,
                     resolvedMember.SourcePath,
@@ -167,28 +172,33 @@ internal static class AaaBlockInsertService
                     foreach (var resolvedMember in resolvedMembers)
                     {
                         var cacheKey = resolvedMember.SourcePath + "|" + resolvedMember.LastWriteTimeUtc.Ticks.ToString();
-                        if (!definitionIds.TryGetValue(cacheKey, out var blockId))
+                        if (!insertionPlans.TryGetValue(cacheKey, out var insertionPlan) ||
+                            insertionPlan.BlockId.IsNull)
+                        {
                             continue;
+                        }
 
                         using var blockReference = new BlockReference(
                             new Point3d(
                                 insertionPoint.X + resolvedMember.Member.OffsetX,
                                 insertionPoint.Y + resolvedMember.Member.OffsetY,
                                 insertionPoint.Z + resolvedMember.Member.OffsetZ),
-                            blockId);
+                            insertionPlan.BlockId);
 
                         blockReference.Rotation = resolvedMember.Member.Rotation;
                         blockReference.ScaleFactors = CreateScale3d(resolvedMember.Member);
 
-                        if (!string.IsNullOrWhiteSpace(resolvedMember.Member.LayerName))
+                        var layerName = ResolveLayerName(resolvedMember.Member, insertionPlan);
+                        if (!string.IsNullOrWhiteSpace(layerName))
                         {
-                            EnsureLayerExists(database, transaction, resolvedMember.Member.LayerName);
-                            blockReference.Layer = resolvedMember.Member.LayerName;
+                            EnsureLayerExists(database, transaction, layerName);
+                            blockReference.Layer = layerName;
                         }
 
                         currentSpace.AppendEntity(blockReference);
                         transaction.AddNewlyCreatedDBObject(blockReference, true);
-                        AppendAttributeReferences(blockReference, transaction);
+                        ApplyDynamicPropertySnapshots(blockReference, insertionPlan.DynamicPropertySnapshots);
+                        AppendAttributeReferences(blockReference, database, transaction, insertionPlan.AttributeSnapshots);
                     }
                 });
 
@@ -271,6 +281,14 @@ internal static class AaaBlockInsertService
         return new Scale3d(scaleX, scaleY, scaleZ);
     }
 
+    private static string ResolveLayerName(AaaBlockComboMember member, SingleBlockInsertionPlan insertionPlan)
+    {
+        var memberLayerName = (member.LayerName ?? "").Trim();
+        return memberLayerName.Length > 0
+            ? memberLayerName
+            : insertionPlan.LayerName;
+    }
+
     private static string ResolveLibraryRootPath(AaaBlockCatalogItem item)
     {
         if (!string.IsNullOrWhiteSpace(item.LibraryRootPath))
@@ -303,7 +321,12 @@ internal static class AaaBlockInsertService
         transaction.AddNewlyCreatedDBObject(layerRecord, true);
     }
 
-    private static SingleBlockInsertionPlan? TryReadSingleBlockInsertion(Database sourceDatabase, Database targetDatabase)
+    private static SingleBlockInsertionPlan? TryReadSingleBlockInsertion(
+        Database sourceDatabase,
+        Database targetDatabase,
+        string displayName,
+        string sourcePath,
+        DateTime lastWriteTimeUtc)
     {
         return CadDatabaseScope.Read(
             sourceDatabase,
@@ -353,7 +376,11 @@ internal static class AaaBlockInsertService
                     return null;
                 }
 
-                var importedBlockId = ImportBlockDefinition(sourceDatabase, targetDatabase, sourceBlockRecord.Name);
+                var importedBlockId = ImportBlockDefinition(
+                    sourceDatabase,
+                    targetDatabase,
+                    sourceBlockRecord.Name,
+                    BuildBlockDefinitionName(displayName, sourcePath, lastWriteTimeUtc));
                 return importedBlockId.IsNull
                     ? null
                     : new SingleBlockInsertionPlan
@@ -393,6 +420,7 @@ internal static class AaaBlockInsertService
 
     private static void AppendAttributeReferences(
         BlockReference blockReference,
+        Database database,
         Transaction transaction,
         IReadOnlyList<AttributeValueSnapshot>? attributeSnapshots = null)
     {
@@ -428,9 +456,9 @@ internal static class AaaBlockInsertService
             if (UsesAlignmentPoint(attributeDefinition.Justify))
                 attributeReference.AlignmentPoint = attributeDefinition.AlignmentPoint.TransformBy(blockReference.BlockTransform);
 
-            var attributeValue = ResolveAttributeValue(attributeDefinition, remainingSnapshots);
-            if (attributeValue != null)
-                ApplyAttributeValue(attributeReference, attributeValue);
+            var attributeSnapshot = ResolveAttributeSnapshot(attributeDefinition, remainingSnapshots);
+            if (attributeSnapshot != null)
+                ApplyAttributeSnapshot(attributeReference, attributeSnapshot, blockReference.BlockTransform, database);
 
             blockReference.AttributeCollection.AppendAttribute(attributeReference);
             transaction.AddNewlyCreatedDBObject(attributeReference, true);
@@ -450,6 +478,7 @@ internal static class AaaBlockInsertService
         Transaction transaction)
     {
         var snapshots = new List<AttributeValueSnapshot>();
+        var sourceTransformInverse = blockReference.BlockTransform.Inverse();
         foreach (ObjectId attributeId in blockReference.AttributeCollection)
         {
             if (!CadDatabaseScope.TryOpenAs<AttributeReference>(transaction, attributeId, OpenMode.ForRead, out var attributeReference) ||
@@ -461,11 +490,44 @@ internal static class AaaBlockInsertService
             snapshots.Add(new AttributeValueSnapshot
             {
                 Tag = (attributeReference.Tag ?? "").Trim(),
-                TextValue = GetAttributeValue(attributeReference)
+                TextValue = GetAttributeValue(attributeReference),
+                Justify = attributeReference.Justify,
+                HasJustify = true,
+                Position = attributeReference.Position.TransformBy(sourceTransformInverse),
+                HasPosition = true,
+                AlignmentPoint = ReadLocalAlignmentPoint(attributeReference, sourceTransformInverse, out var hasAlignmentPoint),
+                HasAlignmentPoint = hasAlignmentPoint
             });
         }
 
         return snapshots;
+    }
+
+    private static Point3d ReadLocalAlignmentPoint(
+        AttributeReference attributeReference,
+        Matrix3d sourceTransformInverse,
+        out bool hasAlignmentPoint)
+    {
+        hasAlignmentPoint = false;
+        if (!UsesAlignmentPoint(attributeReference.Justify))
+            return Point3d.Origin;
+
+        try
+        {
+            var alignmentPoint = attributeReference.AlignmentPoint.TransformBy(sourceTransformInverse);
+            hasAlignmentPoint = true;
+            return alignmentPoint;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 读取属性文字对齐点失败", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 读取属性文字对齐点失败（无效操作）", ex);
+        }
+
+        return Point3d.Origin;
     }
 
     private static IReadOnlyList<DynamicPropertySnapshot> ReadDynamicPropertySnapshots(BlockReference blockReference)
@@ -577,6 +639,8 @@ internal static class AaaBlockInsertService
 
                 remainingSnapshots.Remove(snapshot);
             }
+
+            blockReference.RecordGraphicsModified(true);
         }
         catch (Autodesk.AutoCAD.Runtime.Exception ex)
         {
@@ -675,7 +739,7 @@ internal static class AaaBlockInsertService
         return value;
     }
 
-    private static string? ResolveAttributeValue(
+    private static AttributeValueSnapshot? ResolveAttributeSnapshot(
         AttributeDefinition attributeDefinition,
         List<AttributeValueSnapshot> remainingSnapshots)
     {
@@ -692,18 +756,40 @@ internal static class AaaBlockInsertService
                     continue;
 
                 remainingSnapshots.RemoveAt(index);
-                return snapshot.TextValue;
+                return snapshot;
             }
         }
 
         var fallback = remainingSnapshots[0];
         remainingSnapshots.RemoveAt(0);
-        return fallback.TextValue;
+        return fallback;
     }
 
-    private static void ApplyAttributeValue(AttributeReference attributeReference, string value)
+    private static void ApplyAttributeSnapshot(
+        AttributeReference attributeReference,
+        AttributeValueSnapshot snapshot,
+        Matrix3d blockTransform,
+        Database database)
     {
+        var value = snapshot.TextValue ?? "";
+        if (snapshot.HasJustify)
+            attributeReference.Justify = snapshot.Justify;
+
         attributeReference.TextString = value;
+        ApplyMTextAttributeValue(attributeReference, value);
+
+        if (snapshot.HasPosition)
+            attributeReference.Position = snapshot.Position.TransformBy(blockTransform);
+
+        if (snapshot.HasAlignmentPoint && UsesAlignmentPoint(attributeReference.Justify))
+            TryApplyAttributeAlignmentPoint(attributeReference, snapshot.AlignmentPoint.TransformBy(blockTransform));
+
+        TryAdjustAttributeAlignment(attributeReference, database);
+        attributeReference.RecordGraphicsModified(true);
+    }
+
+    private static void ApplyMTextAttributeValue(AttributeReference attributeReference, string value)
+    {
         if (!attributeReference.IsMTextAttribute)
             return;
 
@@ -724,15 +810,62 @@ internal static class AaaBlockInsertService
         return mText?.Text ?? attributeReference.TextString ?? "";
     }
 
+    private static void TryApplyAttributeAlignmentPoint(AttributeReference attributeReference, Point3d alignmentPoint)
+    {
+        try
+        {
+            attributeReference.AlignmentPoint = alignmentPoint;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 还原属性文字对齐点失败", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 还原属性文字对齐点失败（无效操作）", ex);
+        }
+    }
+
+    private static void TryAdjustAttributeAlignment(AttributeReference attributeReference, Database database)
+    {
+        if (!UsesAlignmentPoint(attributeReference.Justify))
+            return;
+
+        try
+        {
+            attributeReference.AdjustAlignment(database);
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 校正属性文字对齐失败", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 校正属性文字对齐失败（无效操作）", ex);
+        }
+    }
+
     private static bool UsesAlignmentPoint(AttachmentPoint attachmentPoint)
     {
         return attachmentPoint != AttachmentPoint.BaseLeft;
     }
 
-    private static ObjectId ImportBlockDefinition(Database sourceDatabase, Database targetDatabase, string sourceBlockName)
+    private static ObjectId ImportBlockDefinition(
+        Database sourceDatabase,
+        Database targetDatabase,
+        string sourceBlockName,
+        string targetBlockName)
     {
-        if (targetDatabase == null || string.IsNullOrWhiteSpace(sourceBlockName))
+        if (targetDatabase == null ||
+            string.IsNullOrWhiteSpace(sourceBlockName) ||
+            string.IsNullOrWhiteSpace(targetBlockName))
+        {
             return ObjectId.Null;
+        }
+
+        var existingTargetBlockId = TryGetBlockDefinitionId(targetDatabase, targetBlockName);
+        if (!existingTargetBlockId.IsNull)
+            return existingTargetBlockId;
 
         var sourceBlockId = CadDatabaseScope.Read(
             sourceDatabase,
@@ -752,17 +885,65 @@ internal static class AaaBlockInsertService
             sourceIds,
             targetDatabase.BlockTableId,
             importedIds,
-            DuplicateRecordCloning.Ignore,
+            DuplicateRecordCloning.MangleName,
             false);
 
+        var importedBlockId = ResolveImportedObjectId(importedIds, sourceBlockId);
+        if (importedBlockId.IsNull)
+            return ObjectId.Null;
+
+        return RenameImportedBlockDefinition(targetDatabase, importedBlockId, targetBlockName);
+    }
+
+    private static ObjectId TryGetBlockDefinitionId(Database database, string blockName)
+    {
+        if (database == null || string.IsNullOrWhiteSpace(blockName))
+            return ObjectId.Null;
+
         return CadDatabaseScope.Read(
-            targetDatabase,
+            database,
             (_, transaction) =>
             {
-                var blockTable = CadDatabaseScope.OpenAs<BlockTable>(transaction, targetDatabase.BlockTableId, OpenMode.ForRead);
-                return blockTable.Has(sourceBlockName)
-                    ? blockTable[sourceBlockName]
+                var blockTable = CadDatabaseScope.OpenAs<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
+                return blockTable.Has(blockName)
+                    ? blockTable[blockName]
                     : ObjectId.Null;
+            });
+    }
+
+    private static ObjectId ResolveImportedObjectId(IdMapping importedIds, ObjectId sourceBlockId)
+    {
+        foreach (IdPair pair in importedIds)
+        {
+            if (pair.Key == sourceBlockId && pair.Value != ObjectId.Null)
+                return pair.Value;
+        }
+
+        return ObjectId.Null;
+    }
+
+    private static ObjectId RenameImportedBlockDefinition(Database database, ObjectId importedBlockId, string targetBlockName)
+    {
+        return CadDatabaseScope.Write(
+            database,
+            (_, transaction) =>
+            {
+                var blockTable = CadDatabaseScope.OpenAs<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
+                if (blockTable.Has(targetBlockName))
+                    return blockTable[targetBlockName];
+
+                if (!CadDatabaseScope.TryOpenAs<BlockTableRecord>(
+                        transaction,
+                        importedBlockId,
+                        OpenMode.ForWrite,
+                        out var importedBlock) ||
+                    importedBlock == null)
+                {
+                    return importedBlockId;
+                }
+
+                importedBlock.Name = targetBlockName;
+                return importedBlock.ObjectId;
             });
     }
 
@@ -862,6 +1043,12 @@ internal static class AaaBlockInsertService
     {
         internal string Tag { get; set; } = "";
         internal string TextValue { get; set; } = "";
+        internal AttachmentPoint Justify { get; set; } = AttachmentPoint.BaseLeft;
+        internal bool HasJustify { get; set; }
+        internal Point3d Position { get; set; } = Point3d.Origin;
+        internal bool HasPosition { get; set; }
+        internal Point3d AlignmentPoint { get; set; } = Point3d.Origin;
+        internal bool HasAlignmentPoint { get; set; }
     }
 
     private sealed class DynamicPropertySnapshot

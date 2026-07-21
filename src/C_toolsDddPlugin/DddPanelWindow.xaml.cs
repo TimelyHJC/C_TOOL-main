@@ -1052,7 +1052,7 @@ public partial class DddPanelWindow : Window, IModelessWindowPlacement, IModeles
     {
         ApplyFixedWindowSize();
         ShowActivated = true;
-        Show();
+        ModelessWindowDisplayHelper.RestoreAndShow(this, activateIfVisible: true);
         DddTextInputFocusHelper.FocusTextBox(this, TxtAddText, selectAll: false, moveCaretToEnd: true);
     }
 

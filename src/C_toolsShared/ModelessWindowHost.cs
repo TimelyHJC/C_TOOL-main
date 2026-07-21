@@ -191,34 +191,20 @@ public sealed class ModelessWindowHost<TWindow> where TWindow : Window
 
     private static void ShowExistingWindow(TWindow window, bool activateIfVisible)
     {
-        if (window.WindowState == WindowState.Minimized)
-            window.WindowState = WindowState.Normal;
-
         if (window.Visibility != Visibility.Visible)
         {
             ShowViaAutoCadHost(window);
             return;
         }
 
-        if (!activateIfVisible)
-            return;
-
-        try
-        {
-            window.Activate();
-        }
-        catch (InvalidOperationException ex)
-        {
-            C_toolsDiagnostics.LogNonFatal($"激活模型窗口 {typeof(TWindow).Name} 失败（无效操作）", ex);
-        }
-        catch (Exception ex)
-        {
-            C_toolsDiagnostics.LogNonFatal($"激活模型窗口 {typeof(TWindow).Name} 失败", ex);
-        }
+        ModelessWindowDisplayHelper.RestoreAndShow(window, activateIfVisible);
     }
 
     private static void ShowViaAutoCadHost(TWindow window)
     {
+        if (window.WindowState == WindowState.Minimized)
+            window.WindowState = WindowState.Normal;
+
         NormalizeBoundsForCurrentDisplay(window);
         window.ShowActivated = false;
 

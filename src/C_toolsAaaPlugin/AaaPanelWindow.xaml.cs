@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -8,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Data;
 using System.Windows.Threading;
 using AcAp = Autodesk.AutoCAD.ApplicationServices.Application;
 using C_toolsShared;
@@ -47,6 +49,8 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         CategoryTagsListBox.ItemsSource = _categoryTags;
         _blocksView = System.Windows.Data.CollectionViewSource.GetDefaultView(_blocks);
         _blocksView.Filter = FilterBlock;
+        if (_blocksView is ListCollectionView blocksListView)
+            blocksListView.CustomSort = new AaaBlockSearchComparer(this);
         UpdateCommandButtonsState();
         UpdateSummary();
         SetStatus(InitialStatusText);
@@ -62,6 +66,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
             _isInitializing = true;
             var settings = AaaFolderBlockStore.Load();
             _folderPath = AaaFolderBlockStore.NormalizeFolderPath(settings.FolderPath);
+            _activeCategoryKey = AaaFolderBlockStore.NormalizeCategoryKey(settings.LastCategoryKey);
             SetFavoriteFolders(settings.FavoriteFolders);
             FolderPathTextBox.Text = _folderPath;
             IncludeSubfoldersCheckBox.IsChecked = settings.IncludeSubfolders;
@@ -106,7 +111,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
 
     internal void EnsureShown()
     {
-        Show();
+        ModelessWindowDisplayHelper.RestoreAndShow(this);
         ShowActivated = false;
     }
 
@@ -290,6 +295,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         _activeCategoryKey = CategoryTagsListBox.SelectedItem is AaaCategoryTagItem tag
             ? tag.Key
             : "";
+        SaveSettings();
         RefreshFilteredView();
     }
 
@@ -377,7 +383,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
             return false;
         if (_searchText.Length == 0)
             return true;
-        return item.SearchText.IndexOf(_searchText, StringComparison.OrdinalIgnoreCase) >= 0;
+        return SearchTextCompat.ContainsFuzzy(item.SearchText, _searchText);
     }
 
     private void BeginImportFromDrawing()
@@ -595,6 +601,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         {
             FolderPath = _folderPath,
             IncludeSubfolders = IncludeSubfoldersCheckBox.IsChecked == true,
+            LastCategoryKey = AaaFolderBlockStore.NormalizeCategoryKey(_activeCategoryKey),
             FavoriteFolders = _favoriteFolders.Select(x => x.FullPath).ToList()
         });
     }
@@ -650,7 +657,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
     private void RefreshFilteredView()
     {
         _blocksView.Refresh();
-        EnsureValidSelection();
+        EnsureValidSelection(preferFirst: _searchText.Length > 0);
         UpdateSummary();
         UpdateCommandButtonsState();
     }
@@ -685,7 +692,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         };
     }
 
-    private void EnsureValidSelection()
+    private void EnsureValidSelection(bool preferFirst = false)
     {
         var visibleBlocks = _blocksView.Cast<AaaBlockCatalogItem>().ToList();
         if (visibleBlocks.Count == 0)
@@ -694,7 +701,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
             return;
         }
 
-        if (BlocksGrid.SelectedItem is AaaBlockCatalogItem selected && visibleBlocks.Contains(selected))
+        if (!preferFirst && BlocksGrid.SelectedItem is AaaBlockCatalogItem selected && visibleBlocks.Contains(selected))
             return;
 
         BlocksGrid.SelectedItem = visibleBlocks[0];
@@ -712,10 +719,8 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
             _categoryTags.Add(item);
 
         var selected = _categoryTags.FirstOrDefault(x =>
-                           string.Equals(x.Key, selectedKey, StringComparison.OrdinalIgnoreCase) && x.Count > 0)
-                       ?? _categoryTags.FirstOrDefault(x => x.Count > 0)
-                       ?? _categoryTags.FirstOrDefault(x =>
                            string.Equals(x.Key, selectedKey, StringComparison.OrdinalIgnoreCase))
+                       ?? _categoryTags.FirstOrDefault(x => x.Count > 0)
                        ?? _categoryTags.FirstOrDefault();
         CategoryTagsListBox.SelectedItem = selected;
         _activeCategoryKey = selected?.Key ?? "";
@@ -800,5 +805,37 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         public Win32Window(IntPtr handle) => Handle = handle;
 
         public IntPtr Handle { get; }
+    }
+
+    private sealed class AaaBlockSearchComparer : IComparer
+    {
+        private readonly AaaPanelWindow _owner;
+
+        public AaaBlockSearchComparer(AaaPanelWindow owner) => _owner = owner;
+
+        public int Compare(object? x, object? y)
+        {
+            if (x is not AaaBlockCatalogItem a || y is not AaaBlockCatalogItem b)
+                return 0;
+
+            var searchText = _owner._searchText;
+            if (searchText.Length > 0)
+            {
+                var ra = SearchTextCompat.GetFuzzyMatchRank(a.SearchText, searchText);
+                var rb = SearchTextCompat.GetFuzzyMatchRank(b.SearchText, searchText);
+                if (ra != rb)
+                    return ra.CompareTo(rb);
+            }
+
+            var folderCompare = string.Compare(a.RelativeFolderDisplay, b.RelativeFolderDisplay, StringComparison.OrdinalIgnoreCase);
+            if (folderCompare != 0)
+                return folderCompare;
+
+            var kindCompare = a.Kind.CompareTo(b.Kind);
+            if (kindCompare != 0)
+                return kindCompare;
+
+            return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

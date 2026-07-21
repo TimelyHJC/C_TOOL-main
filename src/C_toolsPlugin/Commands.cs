@@ -348,6 +348,12 @@ public class Commands
         RectangleCenterAlignCommandService.Run();
     }
 
+    [CommandMethod(PluginCommandIds.CommandGroup, PluginCommandIds.RectangleMerge, CommandFlags.Modal | CommandFlags.UsePickSet)]
+    public void MergeRectangles()
+    {
+        RectangleMergeCommandService.Run();
+    }
+
     [CommandMethod(PluginCommandIds.CommandGroup, PluginCommandIds.FoldBreakSymbol, CommandFlags.Modal)]
     public void CreateFoldBreakSymbol()
     {

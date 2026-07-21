@@ -229,7 +229,7 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
 
     internal void ShowAfterHatchStylePick()
     {
-        Show();
+        ModelessWindowDisplayHelper.RestoreAndShow(this);
         EnsureDefaultView();
     }
 
@@ -262,13 +262,13 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
     {
         if (_filterText.Length == 0)
             return true;
-        return StringSearchCompat.ContainsOrdinalIgnoreCase(r.Alias, _filterText)
-               || StringSearchCompat.ContainsOrdinalIgnoreCase(r.CommandName, _filterText)
-               || StringSearchCompat.ContainsOrdinalIgnoreCase(r.Description, _filterText)
-               || StringSearchCompat.ContainsOrdinalIgnoreCase(r.LayerName, _filterText)
-               || StringSearchCompat.ContainsOrdinalIgnoreCase(r.LayerColor, _filterText)
-               || StringSearchCompat.ContainsOrdinalIgnoreCase(r.LayerLinetype, _filterText)
-               || StringSearchCompat.ContainsOrdinalIgnoreCase(r.LayerLineWeight, _filterText);
+        return SearchTextCompat.ContainsFuzzy(r.Alias, _filterText)
+               || SearchTextCompat.ContainsFuzzy(r.CommandName, _filterText)
+               || SearchTextCompat.ContainsFuzzy(r.Description, _filterText)
+               || SearchTextCompat.ContainsFuzzy(r.LayerName, _filterText)
+               || SearchTextCompat.ContainsFuzzy(r.LayerColor, _filterText)
+               || SearchTextCompat.ContainsFuzzy(r.LayerLinetype, _filterText)
+               || SearchTextCompat.ContainsFuzzy(r.LayerLineWeight, _filterText);
     }
 
     /// <summary>搜索排序：前缀匹配优先于仅包含子串；同档按命令名或图层名+别名排序。</summary>
@@ -295,6 +295,18 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
                 return 14;
             if (StringSearchCompat.ContainsOrdinalIgnoreCase(r.LayerLineWeight, f))
                 return 15;
+            if (SearchTextCompat.ContainsFuzzy(r.Alias, f))
+                return 20;
+            if (SearchTextCompat.ContainsFuzzy(r.LayerName, f))
+                return 21;
+            if (SearchTextCompat.ContainsFuzzy(r.Description, f))
+                return 22;
+            if (SearchTextCompat.ContainsFuzzy(r.LayerColor, f))
+                return 23;
+            if (SearchTextCompat.ContainsFuzzy(r.LayerLinetype, f))
+                return 24;
+            if (SearchTextCompat.ContainsFuzzy(r.LayerLineWeight, f))
+                return 25;
             return 99;
         }
 
@@ -308,6 +320,12 @@ public partial class FloatingPanelWindow : Window, IModelessWindowPlacement, IMo
             return 11;
         if (StringSearchCompat.ContainsOrdinalIgnoreCase(r.Description, f))
             return 12;
+        if (SearchTextCompat.ContainsFuzzy(r.CommandName, f))
+            return 20;
+        if (SearchTextCompat.ContainsFuzzy(r.Alias, f))
+            return 21;
+        if (SearchTextCompat.ContainsFuzzy(r.Description, f))
+            return 22;
         return 99;
     }
 

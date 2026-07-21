@@ -69,6 +69,8 @@ public static class C_toolsCommandIds
         public const string TextIncrementCopy = "F_AD";
         /// <summary>矩形框内居中</summary>
         public const string RectangleCenterAlign = "F_ZZ";
+        /// <summary>多个矩形合并为一个闭合图形</summary>
+        public const string RectangleMerge = "F_JX";
         /// <summary>折空符号</summary>
         public const string FoldBreakSymbol = "F_DK";
         /// <summary>切换到布局空间</summary>

@@ -30,6 +30,7 @@ internal static class AaaFolderBlockStore
         settings ??= new AaaFolderBlockSettings();
         settings.FolderPath = NormalizeFolderPath(settings.FolderPath);
         settings.FavoriteFolders = NormalizeFolderList(settings.FavoriteFolders);
+        settings.LastCategoryKey = NormalizeCategoryKey(settings.LastCategoryKey);
         if (settings.FolderPath.Length == 0)
             settings.FolderPath = TryEnsureDefaultLibraryFolder();
 
@@ -41,6 +42,7 @@ internal static class AaaFolderBlockStore
         settings.FileVersion = FileVersion;
         settings.FolderPath = NormalizeFolderPath(settings.FolderPath);
         settings.FavoriteFolders = NormalizeFolderList(settings.FavoriteFolders);
+        settings.LastCategoryKey = NormalizeCategoryKey(settings.LastCategoryKey);
         C_toolsJsonFileStore.TryWrite(
             FilePath,
             settings,
@@ -91,6 +93,14 @@ internal static class AaaFolderBlockStore
         }
 
         return result;
+    }
+
+    internal static string NormalizeCategoryKey(string? categoryKey)
+    {
+        var key = (categoryKey ?? "").Trim();
+        return string.Equals(key, AaaCategoryTagItem.ComboLibraryKey, StringComparison.OrdinalIgnoreCase)
+            ? AaaCategoryTagItem.ComboLibraryKey
+            : AaaCategoryTagItem.SingleLibraryKey;
     }
 
     private static string TryEnsureDefaultLibraryFolder()

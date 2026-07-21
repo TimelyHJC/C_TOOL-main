@@ -54,7 +54,7 @@ public partial class BbbPanelWindow : Window, IModelessWindowPlacement
 
     internal void EnsureShown()
     {
-        Show();
+        ModelessWindowDisplayHelper.RestoreAndShow(this);
         ShowActivated = false;
     }
 

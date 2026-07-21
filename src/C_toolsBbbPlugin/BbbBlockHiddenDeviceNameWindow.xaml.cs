@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
@@ -10,6 +11,7 @@ public partial class BbbBlockHiddenDeviceNameWindow : Window, INotifyPropertyCha
 {
     private readonly ObservableCollection<BbbBlockHiddenDeviceNameTarget> _targets;
     private readonly ObservableCollection<BbbBlockHiddenDeviceNameOption> _deviceOptions;
+    private readonly Dictionary<BbbBlockHiddenDeviceNameOption, int> _deviceOptionOrder = new();
     private readonly ICollectionView _deviceOptionsView;
     private string _searchText = "";
     private string _footerStatusText = "";
@@ -41,11 +43,15 @@ public partial class BbbBlockHiddenDeviceNameWindow : Window, INotifyPropertyCha
                 Name = x,
                 IsSelected = selectedSet.Contains(x)
             }));
+        for (var i = 0; i < _deviceOptions.Count; i++)
+            _deviceOptionOrder[_deviceOptions[i]] = i;
         foreach (var option in _deviceOptions)
             option.PropertyChanged += OnOptionPropertyChanged;
 
         _deviceOptionsView = CollectionViewSource.GetDefaultView(_deviceOptions);
         _deviceOptionsView.Filter = FilterDeviceOption;
+        if (_deviceOptionsView is ListCollectionView deviceOptionsListView)
+            deviceOptionsListView.CustomSort = new DeviceOptionSearchComparer(this);
 
         DeviceOptionsView = _deviceOptionsView;
         BlockSummaryText = ordinaryBlockCount > 0
@@ -116,7 +122,7 @@ public partial class BbbBlockHiddenDeviceNameWindow : Window, INotifyPropertyCha
         if (string.IsNullOrWhiteSpace(SearchText))
             return true;
 
-        return option.Name.IndexOf(SearchText.Trim(), StringComparison.OrdinalIgnoreCase) >= 0;
+        return SearchTextCompat.ContainsFuzzy(option.Name, SearchText);
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -180,4 +186,31 @@ public partial class BbbBlockHiddenDeviceNameWindow : Window, INotifyPropertyCha
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
+
+    private sealed class DeviceOptionSearchComparer : IComparer
+    {
+        private readonly BbbBlockHiddenDeviceNameWindow _owner;
+
+        public DeviceOptionSearchComparer(BbbBlockHiddenDeviceNameWindow owner) => _owner = owner;
+
+        public int Compare(object? x, object? y)
+        {
+            if (x is not BbbBlockHiddenDeviceNameOption a || y is not BbbBlockHiddenDeviceNameOption b)
+                return 0;
+
+            var searchText = _owner._searchText;
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var ra = SearchTextCompat.GetFuzzyMatchRank(a.Name, searchText);
+                var rb = SearchTextCompat.GetFuzzyMatchRank(b.Name, searchText);
+                if (ra != rb)
+                    return ra.CompareTo(rb);
+            }
+
+            return _owner.GetOriginalDeviceOptionIndex(a).CompareTo(_owner.GetOriginalDeviceOptionIndex(b));
+        }
+    }
+
+    private int GetOriginalDeviceOptionIndex(BbbBlockHiddenDeviceNameOption option) =>
+        _deviceOptionOrder.TryGetValue(option, out var index) ? index : int.MaxValue;
 }

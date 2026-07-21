@@ -182,12 +182,6 @@ internal static class DddDimensionShiftService
                     return;
                 }
 
-                if (!TrySyncDimensionTextAvoidance(doc, session, context, out error))
-                {
-                    ed.WriteMessage($"\nC_TOOL：{error}");
-                    return;
-                }
-
                 if (context.IsHorizontal)
                 {
                     WriteCommandMessage(ed, context, movedCount > 1
@@ -791,43 +785,6 @@ internal static class DddDimensionShiftService
             error = BuildCommandFailureMessage(context, "执行失败", ex.Message);
             return false;
         }
-    }
-
-    private static bool TrySyncDimensionTextAvoidance(
-        Document doc,
-        DimensionShiftSession session,
-        ShiftCommandContext context,
-        out string error)
-    {
-        error = string.Empty;
-
-        if (session.Items.Count == 0)
-            return true;
-
-        var dimensionIds = new List<ObjectId>(session.Items.Count);
-        foreach (var item in session.Items)
-        {
-            if (!item.DimensionId.IsNull && item.DimensionId.IsValid && !item.DimensionId.IsErased)
-                dimensionIds.Add(item.DimensionId);
-        }
-
-        if (dimensionIds.Count == 0)
-            return true;
-
-        if (DddDimensionTextAvoidanceService.TryApplyDimensionIds(
-                doc,
-                dimensionIds,
-                context.CommandName,
-                preferCurrentPlacement: true,
-                out _,
-                out _,
-                out var syncError))
-        {
-            return true;
-        }
-
-        error = BuildCommandFailureMessage(context, "已调整位置，但避让同步失败", syncError);
-        return false;
     }
 
     private static bool TryApplyOffsetToLeader(
