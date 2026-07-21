@@ -1146,6 +1146,7 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
         }
 
         _frames.AddRange(framesToAppend);
+        ReorderFramesByCurrentPlotRule();
 
         if (appendedCount == 0)
         {
@@ -1221,6 +1222,25 @@ public partial class QqqPlotWindow : Window, IModelessWindowPlacement, IModeless
     {
         for (var i = 0; i < _frames.Count; i++)
             _frames[i].AddedOrder = i + 1;
+    }
+
+    private void ReorderFramesByCurrentPlotRule()
+    {
+        if (_frames.Count <= 1)
+        {
+            RenumberFrameAddedOrders();
+            return;
+        }
+
+        var orderedFrames = QqqPlotService.SortFrames(_frames, BuildPlotOptions().SortRule).ToList();
+        for (var i = 0; i < orderedFrames.Count; i++)
+        {
+            var currentIndex = _frames.IndexOf(orderedFrames[i]);
+            if (currentIndex >= 0 && currentIndex != i)
+                _frames.Move(currentIndex, i);
+        }
+
+        RenumberFrameAddedOrders();
     }
 
     private void UpdateFrameSelectionHeader()

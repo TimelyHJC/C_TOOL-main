@@ -617,6 +617,7 @@
                     Style="{StaticResource ToolbarIconButton}"
                     Margin="0,0,8,0"
                     Click="UpdateCurrentLibrary_Click"
+                    Visibility="Collapsed"
                     ToolTipService.ShowOnDisabled="True">
               <ContentControl Style="{StaticResource CadUpdateIconControl}"
                               Width="18"

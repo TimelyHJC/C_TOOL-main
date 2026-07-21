@@ -125,7 +125,7 @@ internal static class AaaBlockComboLibraryImportService
         return (true, result.Value, AaaImportResult.Succeed("", 0));
     }
 
-    private static AaaImportResult CreateComboDefinition(
+    internal static AaaImportResult CreateComboDefinition(
         Document doc,
         string targetFolder,
         string comboName,

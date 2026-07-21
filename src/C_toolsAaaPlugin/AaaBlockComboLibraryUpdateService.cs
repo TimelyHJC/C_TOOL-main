@@ -8,6 +8,87 @@ namespace C_toolsAaaPlugin;
 
 internal static class AaaBlockComboLibraryUpdateService
 {
+    internal static AaaImportResult PromptAndImportOrUpdateCombo(
+        Document doc,
+        string targetFolder,
+        IReadOnlyList<AaaBlockCatalogItem> libraryItems)
+    {
+        if (doc == null)
+            return AaaImportResult.Failure(UIMessages.BlockLibrary.NoActiveDocument);
+        if (string.IsNullOrWhiteSpace(targetFolder) || !Directory.Exists(targetFolder))
+            return AaaImportResult.Failure(UIMessages.BlockLibrary.InvalidFolder);
+
+        var candidates = (libraryItems ?? Array.Empty<AaaBlockCatalogItem>())
+            .Where(x => x.IsCombo && !string.IsNullOrWhiteSpace(x.FullPath))
+            .ToList();
+
+        try
+        {
+            var editor = doc.Editor;
+            var blocks = AaaBlockComboLibraryImportService.ReadComboSelection(doc, editor, out var selectedCount, out var wasCancelled);
+            if (wasCancelled)
+                return AaaImportResult.CancelledResult("已取消添加/更新。");
+            if (blocks.Count < 2)
+            {
+                return selectedCount == 0
+                    ? AaaImportResult.Failure("至少选择 2 个图块。")
+                    : AaaImportResult.Failure("至少选择 2 个图块。");
+            }
+
+            var comboNameResult = AaaBlockComboLibraryImportService.PromptForComboName(editor, blocks.Count);
+            if (!comboNameResult.Success)
+                return AaaImportResult.CancelledResult("已取消添加/更新。");
+
+            var basePointResult = AaaBlockComboLibraryImportService.PromptForComboBasePoint(editor, comboNameResult.ComboName);
+            if (!basePointResult.Success)
+                return AaaImportResult.CancelledResult("已取消添加/更新。");
+
+            var deviceName = AaaBlockLibraryNameHelper.GetDeviceName(comboNameResult.ComboName);
+            var hasMatches = deviceName.Length > 0 &&
+                             candidates.Any(x => string.Equals(
+                                 AaaBlockLibraryNameHelper.GetDeviceName(x.DisplayName),
+                                 deviceName,
+                                 StringComparison.OrdinalIgnoreCase));
+
+            return hasMatches
+                ? UpdateComboDefinitions(
+                    doc,
+                    targetFolder,
+                    candidates,
+                    comboNameResult.ComboName,
+                    basePointResult.BasePoint,
+                    blocks,
+                    selectedCount)
+                : AaaBlockComboLibraryImportService.CreateComboDefinition(
+                    doc,
+                    targetFolder,
+                    comboNameResult.ComboName,
+                    basePointResult.BasePoint,
+                    blocks,
+                    selectedCount);
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 添加/更新组合图库失败", ex);
+            return AaaImportResult.Failure("添加/更新", ex);
+        }
+        catch (IOException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 添加/更新组合图库失败", ex);
+            return AaaImportResult.Failure("添加/更新", ex);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 添加/更新组合图库失败（权限）", ex);
+            return AaaImportResult.Failure("添加/更新", ex);
+        }
+        catch (Exception ex)
+        {
+            C_toolsDiagnostics.LogNonFatal("V_AAA 添加/更新组合图库失败", ex);
+            return AaaImportResult.Failure("添加/更新", ex);
+        }
+    }
+
     internal static AaaImportResult PromptAndUpdateCombo(
         Document doc,
         string targetFolder,

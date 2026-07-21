@@ -915,7 +915,7 @@ internal static class QqqFrameSelectionService
         {
             if (includeBlockFrames && entity is BlockReference blockReference)
             {
-                if (!TryGetExtents(blockReference, out var extents))
+                if (!TryGetPickedBlockReferenceExtents(blockReference, out var extents))
                     return false;
 
                 frame = CreateFrameInfo(
@@ -985,6 +985,40 @@ internal static class QqqFrameSelectionService
         }
 
         return false;
+    }
+
+    private static bool TryGetPickedBlockReferenceExtents(BlockReference blockReference, out Extents3d extents)
+    {
+        try
+        {
+            if (TryGetExplodedEntityExtents(blockReference, depth: 0, out extents))
+                return true;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (ArgumentException)
+        {
+        }
+
+        try
+        {
+            extents = blockReference.GeometricExtents;
+            return true;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception)
+        {
+            extents = default;
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            extents = default;
+            return false;
+        }
     }
 
     private static bool TryGetExtents(Entity entity, out Extents3d extents)

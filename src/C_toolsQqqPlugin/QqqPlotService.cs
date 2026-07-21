@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -43,6 +44,10 @@ internal static class QqqPlotService
     private const string ScaleFit = "布满图纸";
     private const string CombinedLayoutFallbackName = "合并图纸";
     private const string BackgroundPlotSystemVariableName = "BACKGROUNDPLOT";
+    private const int BackgroundPlotPlotBit = 1;
+    private const int PlotOutputReadyTimeoutMilliseconds = 180000;
+    private const int PlotOutputReadyInitialDelayMilliseconds = 80;
+    private const int PlotOutputReadyMaxDelayMilliseconds = 750;
     private const string TileModeSystemVariableName = "TILEMODE";
     private const string CurrentTabSystemVariableName = "CTAB";
     private const string ModelLayoutName = "Model";
@@ -712,7 +717,7 @@ internal static class QqqPlotService
         }
 
         var originalLayout = LayoutManager.Current.CurrentLayout;
-        var plotState = CaptureForegroundPlotState();
+        var plotState = CaptureBackgroundPlotState();
         var fileNameContext = effectiveOptions.Options.PlotToFile
             ? CreateOutputFileNameContext(effectiveOptions.Options)
             : null;
@@ -739,7 +744,7 @@ internal static class QqqPlotService
         }
         finally
         {
-            RestoreForegroundPlotState(plotState);
+            RestoreBackgroundPlotState(plotState);
             TryRestoreTargetLayout(doc, originalLayout);
         }
 
@@ -791,7 +796,7 @@ internal static class QqqPlotService
         var tempFileNameContext = CreateOutputFileNameContext(tempOptions);
 
         var originalLayout = LayoutManager.Current.CurrentLayout;
-        var plotState = CaptureForegroundPlotState();
+        var plotState = CaptureBackgroundPlotState();
         using var documentLock = doc.LockDocument();
         try
         {
@@ -847,7 +852,7 @@ internal static class QqqPlotService
         }
         finally
         {
-            RestoreForegroundPlotState(plotState);
+            RestoreBackgroundPlotState(plotState);
             TryRestoreTargetLayout(doc, originalLayout);
 
             TryDeleteTempFolder(tempFolder);
@@ -878,7 +883,7 @@ internal static class QqqPlotService
         }
 
         var originalLayout = LayoutManager.Current.CurrentLayout;
-        var plotState = CaptureForegroundPlotState();
+        var plotState = CaptureBackgroundPlotState();
         using var documentLock = doc.LockDocument();
         try
         {
@@ -892,7 +897,7 @@ internal static class QqqPlotService
         }
         finally
         {
-            RestoreForegroundPlotState(plotState);
+            RestoreBackgroundPlotState(plotState);
             TryRestoreTargetLayout(doc, originalLayout);
         }
     }
@@ -923,38 +928,120 @@ internal static class QqqPlotService
             ? BuildOutputFilePath(doc.Name, frame, outputFolder, plotIndex, options, fileNameContext ?? CreateOutputFileNameContext(options))
             : "（发送到打印机）";
 
-        using var plotEngine = PlotFactory.CreatePublishEngine();
-        using var progressDialog = new PlotProgressDialog(false, 1, true);
+        using (var plotEngine = PlotFactory.CreatePublishEngine())
+        using (var progressDialog = new PlotProgressDialog(false, 1, true))
+        {
+            ConfigureProgressDialog(progressDialog, frame);
 
-        ConfigureProgressDialog(progressDialog, frame);
+            plotEngine.BeginPlot(progressDialog, null);
+            plotEngine.BeginDocument(
+                plotInfo,
+                Path.GetFileName(doc.Name),
+                null,
+                1,
+                plotToFile,
+                plotToFile ? outputPath : string.Empty);
+            progressDialog.OnBeginSheet();
+            progressDialog.LowerSheetProgressRange = 0;
+            progressDialog.UpperSheetProgressRange = 100;
+            progressDialog.SheetProgressPos = 0;
 
-        plotEngine.BeginPlot(progressDialog, null);
-        plotEngine.BeginDocument(
-            plotInfo,
-            Path.GetFileName(doc.Name),
-            null,
-            1,
-            plotToFile,
-            plotToFile ? outputPath : string.Empty);
-        progressDialog.OnBeginSheet();
-        progressDialog.LowerSheetProgressRange = 0;
-        progressDialog.UpperSheetProgressRange = 100;
-        progressDialog.SheetProgressPos = 0;
+            var pageInfo = new PlotPageInfo();
+            plotEngine.BeginPage(pageInfo, plotInfo, true, null);
+            plotEngine.BeginGenerateGraphics(null);
+            plotEngine.EndGenerateGraphics(null);
+            plotEngine.EndPage(null);
 
-        var pageInfo = new PlotPageInfo();
-        plotEngine.BeginPage(pageInfo, plotInfo, true, null);
-        plotEngine.BeginGenerateGraphics(null);
-        plotEngine.EndGenerateGraphics(null);
-        plotEngine.EndPage(null);
+            progressDialog.SheetProgressPos = 100;
+            progressDialog.OnEndSheet();
+            plotEngine.EndDocument(null);
+            progressDialog.PlotProgressPos = 100;
+            progressDialog.OnEndPlot();
+            plotEngine.EndPlot(null);
+        }
 
-        progressDialog.SheetProgressPos = 100;
-        progressDialog.OnEndSheet();
-        plotEngine.EndDocument(null);
-        progressDialog.PlotProgressPos = 100;
-        progressDialog.OnEndPlot();
-        plotEngine.EndPlot(null);
+        WaitForPlotCompletion(plotToFile, outputPath);
 
         return outputPath;
+    }
+
+    private static void WaitForPlotCompletion(bool plotToFile, string outputPath)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(PlotOutputReadyTimeoutMilliseconds);
+        WaitForPlotFactoryIdle(deadline);
+
+        if (plotToFile)
+            WaitForPlotOutputFile(outputPath, deadline);
+    }
+
+    private static void WaitForPlotFactoryIdle(DateTime deadline)
+    {
+        var delay = PlotOutputReadyInitialDelayMilliseconds;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (PlotFactory.ProcessPlotState == ProcessPlotState.NotPlotting)
+                    return;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or AcadRuntimeException)
+            {
+                C_toolsDiagnostics.LogNonFatal("V_QQQ 等待后台打印状态失败", ex);
+                return;
+            }
+
+            Thread.Sleep(delay);
+            delay = Math.Min(delay * 2, PlotOutputReadyMaxDelayMilliseconds);
+        }
+
+        throw new InvalidOperationException("等待后台打印任务结束超时，请稍后检查 CAD 打印队列。");
+    }
+
+    private static void WaitForPlotOutputFile(string outputPath, DateTime deadline)
+    {
+        var delay = PlotOutputReadyInitialDelayMilliseconds;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (IsPlotOutputFileReady(outputPath))
+                return;
+
+            Thread.Sleep(delay);
+            delay = Math.Min(delay * 2, PlotOutputReadyMaxDelayMilliseconds);
+        }
+
+        throw new InvalidOperationException($"输出文件尚未完成写入：{outputPath}");
+    }
+
+    private static bool IsPlotOutputFileReady(string outputPath)
+    {
+        if (string.IsNullOrWhiteSpace(outputPath))
+            return false;
+
+        try
+        {
+            var fileInfo = new FileInfo(outputPath);
+            if (!fileInfo.Exists || fileInfo.Length <= 0)
+                return false;
+
+            using var stream = new FileStream(outputPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return stream.Length > 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static void ConfigureProgressDialog(PlotProgressDialog progressDialog, QqqPlotFrameInfo frame)
@@ -2359,19 +2446,24 @@ internal static class QqqPlotService
         return "";
     }
 
-    private static CadSystemVariableSnapshot CaptureForegroundPlotState()
+    private static CadSystemVariableSnapshot CaptureBackgroundPlotState()
     {
         var snapshot = CadSystemVariableService.Capture(BackgroundPlotSystemVariableName);
-        if (CadSystemVariableService.TryGetInt32(BackgroundPlotSystemVariableName, out var currentValue) &&
-            currentValue != 0)
+        if (CadSystemVariableService.TryGetInt32(BackgroundPlotSystemVariableName, out var currentValue))
         {
-            CadSystemVariableService.TrySetValue(BackgroundPlotSystemVariableName, 0, out _);
+            var nextValue = currentValue | BackgroundPlotPlotBit;
+            if (nextValue != currentValue)
+                CadSystemVariableService.TrySetValue(BackgroundPlotSystemVariableName, nextValue, out _);
+        }
+        else
+        {
+            CadSystemVariableService.TrySetValue(BackgroundPlotSystemVariableName, BackgroundPlotPlotBit, out _);
         }
 
         return snapshot;
     }
 
-    private static void RestoreForegroundPlotState(CadSystemVariableSnapshot snapshot)
+    private static void RestoreBackgroundPlotState(CadSystemVariableSnapshot snapshot)
     {
         snapshot.TryRestoreAll();
     }

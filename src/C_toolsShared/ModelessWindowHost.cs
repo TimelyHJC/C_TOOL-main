@@ -41,6 +41,13 @@ public sealed class ModelessWindowHost<TWindow> where TWindow : Window
 
             if (_window.Visibility == Visibility.Visible)
             {
+                if (_window.WindowState == WindowState.Minimized)
+                {
+                    InvokeBeforeShow(_window);
+                    showExisting(_window);
+                    return;
+                }
+
                 InvokeBeforeHide(_window);
                 hideExisting(_window);
             }

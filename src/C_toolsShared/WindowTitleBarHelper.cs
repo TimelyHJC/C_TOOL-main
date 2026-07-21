@@ -9,6 +9,12 @@ namespace C_toolsShared;
 
 public static class WindowTitleBarHelper
 {
+    private const int GwlStyle = -16;
+    private const int SwpNoSize = 0x0001;
+    private const int SwpNoMove = 0x0002;
+    private const int SwpNoZOrder = 0x0004;
+    private const int SwpFrameChanged = 0x0020;
+    private const int WsMinimizeBox = 0x00020000;
     private const int DwAttributeUseImmersiveDarkMode = 20;
     private const int DwAttributeUseImmersiveDarkModeLegacy = 19;
     private const int DwAttributeBorderColor = 34;
@@ -33,7 +39,8 @@ public static class WindowTitleBarHelper
         byte textR = 0xE6,
         byte textG = 0xE8,
         byte textB = 0xEA,
-        bool applyCaptionColorToBorder = false)
+        bool applyCaptionColorToBorder = false,
+        bool disableMinimizeButton = false)
     {
         try
         {
@@ -42,6 +49,9 @@ public static class WindowTitleBarHelper
             var handle = new WindowInteropHelper(window).Handle;
             if (handle == IntPtr.Zero)
                 return;
+
+            if (disableMinimizeButton)
+                DisableMinimizeButton(handle);
 
             SetDwmIntAttribute(handle, DwAttributeUseImmersiveDarkMode, 1);
             SetDwmIntAttribute(handle, DwAttributeUseImmersiveDarkModeLegacy, 1);
@@ -53,6 +63,20 @@ public static class WindowTitleBarHelper
         catch
         {
             // 标题栏着色是增强项；当前系统不支持时直接忽略即可。
+        }
+    }
+
+    public static void TryDisableMinimizeButton(Window window)
+    {
+        try
+        {
+            var handle = new WindowInteropHelper(window).Handle;
+            if (handle != IntPtr.Zero)
+                DisableMinimizeButton(handle);
+        }
+        catch
+        {
+            // 标题栏按钮控制是增强项；当前系统不支持时直接忽略即可。
         }
     }
 
@@ -164,6 +188,23 @@ public static class WindowTitleBarHelper
         _ = DwmSetWindowAttribute(hwnd, attribute, ref value, Marshal.SizeOf<int>());
     }
 
+    private static void DisableMinimizeButton(IntPtr hwnd)
+    {
+        var style = GetWindowLong(hwnd, GwlStyle);
+        if ((style & WsMinimizeBox) == 0)
+            return;
+
+        _ = SetWindowLong(hwnd, GwlStyle, style & ~WsMinimizeBox);
+        _ = SetWindowPos(
+            hwnd,
+            IntPtr.Zero,
+            0,
+            0,
+            0,
+            0,
+            SwpNoMove | SwpNoSize | SwpNoZOrder | SwpFrameChanged);
+    }
+
     private static int ToColorRef(byte r, byte g, byte b) =>
         r | (g << 8) | (b << 16);
 
@@ -173,4 +214,20 @@ public static class WindowTitleBarHelper
         int dwAttribute,
         ref int pvAttribute,
         int cbAttribute);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        int uFlags);
 }

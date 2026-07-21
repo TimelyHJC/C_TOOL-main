@@ -23,8 +23,8 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
     private const string InitialStatusText = "请选择图块文件夹。";
     private const string SelectFolderTooltip = "请先选择有效的图块文件夹。";
     private const string RefreshFolderTooltip = "重新读取当前图库目录。";
-    private const string ImportBlocksTooltip = "当前显示独立图库。隐藏面板后可在当前图纸中点选或框选多个图块，并添加到当前图库目录。";
-    private const string ImportComboTooltip = "当前显示组合图库。隐藏面板后可在当前图纸中多选图块，输入组合名称与基点并添加为组合定义。";
+    private const string ImportBlocksTooltip = "当前显示独立图库。隐藏面板后可在当前图纸中点选或框选多个图块；已匹配的替换，未匹配的新增。";
+    private const string ImportComboTooltip = "当前显示组合图库。隐藏面板后可在当前图纸中多选图块，输入组合名称与基点；同名组合替换，否则新增。";
     private const string UpdateBlocksTooltip = "当前显示独立图库。隐藏面板后可在当前图纸中选择新块，并按设备名称替换图库内时间戳不同的旧块。";
     private const string UpdateComboTooltip = "当前显示组合图库。隐藏面板后可在当前图纸中多选图块，输入组合名称与基点，并按设备名称替换图库内时间戳不同的旧组合定义。";
     private const string UpdateBlocksEmptyTooltip = "当前独立图库中没有可更新的图块。";
@@ -59,7 +59,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        WindowTitleBarHelper.TryApplyDarkTitleBar(this);
+        WindowTitleBarHelper.TryApplyDarkTitleBar(this, disableMinimizeButton: true);
 
         try
         {
@@ -205,9 +205,9 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         }
 
         if (IsComboLibraryActive())
-            BeginImportComboFromDrawing();
+            BeginImportOrUpdateComboFromDrawing();
         else
-            BeginImportFromDrawing();
+            BeginImportOrUpdateFromDrawing();
     }
 
     private void UpdateCurrentLibrary_Click(object sender, RoutedEventArgs e)
@@ -355,7 +355,7 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
             SaveSettings();
             var defaultMessage = items.Count == 0
                 ? "当前文件夹中未找到图块或组合定义。"
-                : $"已读取 {items.Count} 个图块/组合；点击右侧添加图标可按当前显示的图库类型添加到当前图库，点击更新图标可按设备名称替换当前图库中的旧项，点击刷新图标可重新读取当前目录。";
+                : $"已读取 {items.Count} 个图块/组合；点击右侧添加图标可按当前显示的图库类型添加或更新当前图库，点击刷新图标可重新读取当前目录。";
             SetStatus(statusOverride ?? defaultMessage);
         }
         catch (IOException ex)
@@ -386,19 +386,23 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         return SearchTextCompat.ContainsFuzzy(item.SearchText, _searchText);
     }
 
-    private void BeginImportFromDrawing()
+    private void BeginImportOrUpdateFromDrawing()
     {
         Hide();
 
         try
         {
+            var librarySnapshot = _blocks
+                .Where(x => !x.IsCombo)
+                .ToList();
+
             AcAp.DocumentManager.ExecuteInApplicationContext(
                 _ =>
                 {
                     var document = AcAp.DocumentManager.MdiActiveDocument;
                     var result = document == null
                         ? AaaImportResult.Failure("当前没有活动图纸。")
-                        : AaaBlockLibraryImportService.PromptAndImport(document, _folderPath);
+                        : AaaBlockLibraryMergeService.PromptAndImportOrUpdate(document, _folderPath, librarySnapshot);
 
                     Dispatcher.BeginInvoke(
                         DispatcherPriority.Normal,
@@ -415,9 +419,9 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         }
         catch (Exception ex)
         {
-            C_toolsDiagnostics.LogNonFatal("V_AAA 发起图块添加失败", ex);
+            C_toolsDiagnostics.LogNonFatal("V_AAA 发起图块添加/更新失败", ex);
             EnsureShown();
-            SetStatus($"添加图块失败：{ex.Message}");
+            SetStatus($"添加/更新图块失败：{ex.Message}");
         }
     }
 
@@ -560,19 +564,23 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         }
     }
 
-    private void BeginImportComboFromDrawing()
+    private void BeginImportOrUpdateComboFromDrawing()
     {
         Hide();
 
         try
         {
+            var librarySnapshot = _blocks
+                .Where(x => x.IsCombo)
+                .ToList();
+
             AcAp.DocumentManager.ExecuteInApplicationContext(
                 _ =>
                 {
                     var document = AcAp.DocumentManager.MdiActiveDocument;
                     var result = document == null
                         ? AaaImportResult.Failure("当前没有活动图纸。")
-                        : AaaBlockComboLibraryImportService.PromptAndImportCombo(document, _folderPath);
+                        : AaaBlockComboLibraryUpdateService.PromptAndImportOrUpdateCombo(document, _folderPath, librarySnapshot);
 
                     Dispatcher.BeginInvoke(
                         DispatcherPriority.Normal,
@@ -589,9 +597,9 @@ public partial class AaaPanelWindow : Window, IModelessWindowPlacement
         }
         catch (Exception ex)
         {
-            C_toolsDiagnostics.LogNonFatal("V_AAA 发起组合添加失败", ex);
+            C_toolsDiagnostics.LogNonFatal("V_AAA 发起组合添加/更新失败", ex);
             EnsureShown();
-            SetStatus($"添加组合失败：{ex.Message}");
+            SetStatus($"添加/更新组合失败：{ex.Message}");
         }
     }
 
